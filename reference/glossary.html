@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>术语表 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .glossary-group { margin: 2rem 0 2.6rem; }
+  .glossary-group h2 { margin-top: 2.4rem; }
+  .glossary-group table { font-size: 0.84rem; }
+  .glossary-group td:first-child {
+    width: 9.5rem;
+    font-weight: 650;
+    color: var(--ink);
+  }
+  .glossary-group td:first-child .en {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 400;
+    color: var(--muted);
+    margin-top: 0.1rem;
+  }
+  .glossary-group td:last-child {
+    width: 4.5rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .glossary-group td:nth-child(2) { color: var(--ink-soft); }
+  @media (max-width: 640px) {
+    .glossary-group td:first-child { width: 7rem; }
+    .glossary-group td:last-child { display: none; }
+    .glossary-group thead th:last-child { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>术语表</h1>
+  <p class="subtitle">一套课程里，同一个词只能有一个意思。</p>
+  <div class="meta">
+    <span>持续更新</span>
+    <span>首次建立 2026-10-23</span>
+    <span>按主题分组</span>
+  </div>
+
+  <p class="lede">
+    定义以英文一手资料为准，中文只做解释，不替代原词。每节课第一次出现术语时会链接到本页。
+    如果你发现某个词在不同课程里含义漂移，回到这里对齐。
+  </p>
+
+  <div class="callout note">
+    <span class="label">三个最容易混淆的区别</span>
+    <p><strong>Agent vs Workflow：</strong>控制流由谁决定。代码写死的是 workflow；模型每步自己决定的是 agent。</p>
+    <p><strong>Tool calling vs Agent：</strong>工具调用只是一次能力扩展；Agent 是在循环里根据观察反复决定下一步。</p>
+    <p><strong>RAG vs Memory：</strong>RAG 检索外部知识；Memory 保存这次/历次交互的状态与经验。两者都进上下文，但来源与生命周期不同。</p>
+  </div>
+
+  <div class="glossary-group">
+    <h2 id="model"><span class="num">A</span>模型与推理</h2>
+    <table>
+      <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
+      <tbody>
+        <tr id="term-llm"><td>大语言模型<span class="en">LLM</span></td><td>在海量文本上训练、根据上下文预测下一个 token 的模型。它本身不执行工具、不访问网络、不记忆会话。</td><td>W1</td></tr>
+        <tr id="term-token"><td>Token</td><td>模型处理文本的最小单位，约等于一个词或词的一部分。计费、上下文长度、延迟都以它为单位。</td><td>W1</td></tr>
+        <tr id="term-context-window"><td>上下文窗口<span class="en">context window</span></td><td>模型单次调用能看到的 token 总量（输入 + 输出）。它是硬上限，也是成本与延迟的主要来源。</td><td>W1</td></tr>
+        <tr id="term-sampling"><td>采样<span class="en">sampling</span></td><td>模型从概率分布中选下一个 token 的方式。temperature、top_p 等参数控制随机性；Agent 任务通常需要低随机性。</td><td>W1</td></tr>
+        <tr id="term-structured-output"><td>结构化输出<span class="en">structured output</span></td><td>让模型按 JSON Schema 等格式返回，便于程序解析。工具参数本质上也是结构化输出。</td><td>W1</td></tr>
+        <tr id="term-function-calling"><td>函数调用<span class="en">function calling / tool calling</span></td><td>模型输出一个结构化的“我要调用某工具、参数是……”的请求；真正执行的是你的代码。</td><td>W1 L1</td></tr>
+        <tr id="term-context-rot"><td>上下文腐化<span class="en">context rot</span></td><td>上下文越长，模型对其中信息的利用越差。不是“塞得越多越好”，需要裁剪、压缩与检索。</td><td>W2</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="glossary-group">
+    <h2 id="agent"><span class="num">B</span>Agent 架构</h2>
+    <table>
+      <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
+      <tbody>
+        <tr id="term-agent"><td>Agent</td><td>由模型动态决定下一步做什么、调用哪个工具、何时停止的系统。与 workflow 的关键区别是控制流归模型，不归代码。</td><td>W1 L1</td></tr>
+        <tr id="term-agentic-system"><td>Agentic system<span class="en">agentic system</span></td><td>Anthropic 的统称：包含 workflow 和 agent 两类。讨论架构时先分清你指的是哪一种。</td><td>W1 L1</td></tr>
+        <tr id="term-workflow"><td>Workflow</td><td>LLM 与工具按预先写好的代码路径执行。可预测、易调试、成本低；适合步骤明确的业务。</td><td>W1 L1</td></tr>
+        <tr id="term-augmented-llm"><td>增强型 LLM<span class="en">augmented LLM</span></td><td>带检索、工具、记忆的 LLM，是构建 workflow 与 agent 的基础积木。</td><td>W1 L1</td></tr>
+        <tr id="term-react"><td>ReAct</td><td>Reasoning + Acting：模型交替产生“想法”和“动作”，执行动作后把观察结果喂回下一轮。现代 function calling 是它的工程化形态。</td><td>W1 L1</td></tr>
+        <tr id="term-tool"><td>工具<span class="en">tool</span></td><td>暴露给模型调用的函数：有名字、描述、参数 schema 和返回值。工具设计是 Agent 工程的核心工作之一。</td><td>W1 L1</td></tr>
+        <tr id="term-aci"><td>Agent–Computer Interface<span class="en">ACI</span></td><td>Agent 与外部系统交互的接口设计，包括工具粒度、命名、参数、返回格式与错误信息。类比人机接口（HCI）。</td><td>W1 D6</td></tr>
+        <tr id="term-agent-loop"><td>Agent 循环<span class="en">agent loop</span></td><td>“模型决策 → 执行工具 → 观察结果 → 再决策”的循环，直到模型给出最终答案或触发停止条件。</td><td>W1 L1</td></tr>
+        <tr id="term-trajectory"><td>轨迹<span class="en">trajectory</span></td><td>一次 Agent 运行中所有步骤的序列：模型输出、工具调用、观察、状态变化。评测与调试的基本单位。</td><td>W1 L1</td></tr>
+        <tr id="term-stop-condition"><td>停止条件<span class="en">stop condition</span></td><td>让循环结束的规则：模型给出最终答案、达到最大步数、超出预算、触发人工接管等。没有它就没有可靠的 Agent。</td><td>W1 L1</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="glossary-group">
+    <h2 id="knowledge"><span class="num">C</span>知识与记忆</h2>
+    <table>
+      <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
+      <tbody>
+        <tr id="term-rag"><td>RAG</td><td>Retrieval-Augmented Generation：先检索外部资料，再把相关资料放进上下文让模型回答。解决“模型不知道你的私有数据”。</td><td>W1 D3</td></tr>
+        <tr id="term-embedding"><td>Embedding</td><td>把文本映射成向量，使语义相近的文本在向量空间里距离更近。用于语义检索、聚类、去重。</td><td>W1 D3</td></tr>
+        <tr id="term-chunking"><td>分块<span class="en">chunking</span></td><td>把长文档切成适合检索与放入上下文的小块。块大小、重叠、按结构切分都会影响召回质量。</td><td>W1 D3</td></tr>
+        <tr id="term-hybrid-search"><td>混合检索<span class="en">hybrid search</span></td><td>同时用关键词检索（BM25）与向量检索，再融合排序。对代码、专有名词、精确匹配尤其重要。</td><td>W1 D3</td></tr>
+        <tr id="term-rerank"><td>重排<span class="en">reranking</span></td><td>先用便宜的方法召回一批候选，再用更贵的模型对候选精排。提升精度，控制成本。</td><td>W1 D4</td></tr>
+        <tr id="term-memory"><td>记忆<span class="en">memory</span></td><td>跨轮次保留的信息。短期记忆通常是会话消息；长期记忆是外部存储的笔记、偏好、经验。</td><td>W2 D8</td></tr>
+        <tr id="term-compaction"><td>压缩<span class="en">compaction</span></td><td>上下文接近上限时，把历史总结成更短的摘要并重新开始，保留关键决策与未解决问题。</td><td>W2 D8</td></tr>
+        <tr id="term-subagent"><td>子 Agent<span class="en">sub-agent</span></td><td>由主 Agent 派生的专用 Agent，独立探索大量信息后只返回精简结论，用于突破上下文与并行探索的限制。</td><td>W2 D11</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="glossary-group">
+    <h2 id="orchestration"><span class="num">D</span>编排与协议</h2>
+    <table>
+      <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
+      <tbody>
+        <tr id="term-state-graph"><td>状态图<span class="en">StateGraph</span></td><td>LangGraph 的核心抽象：节点是计算步骤，边是控制流，状态在各节点间传递并按 reducer 合并。</td><td>W2 D9</td></tr>
+        <tr id="term-reducer"><td>Reducer</td><td>定义“新值如何合并进旧状态”的函数。例如消息列表用 append，计数器用求和。写错 reducer 是状态丢失的常见原因。</td><td>W2 D9</td></tr>
+        <tr id="term-checkpoint"><td>检查点<span class="en">checkpoint</span></td><td>把 Agent 每一步的状态持久化。支持断点恢复、时间旅行调试、多会话隔离。</td><td>W2 D10</td></tr>
+        <tr id="term-durable-execution"><td>持久化执行<span class="en">durable execution</span></td><td>进程崩溃或人工暂停后，任务能从上次检查点继续，且不重复执行有副作用的操作。</td><td>W2 D13</td></tr>
+        <tr id="term-hitl"><td>人在回路<span class="en">human-in-the-loop</span></td><td>在关键动作前暂停，等待人类批准、修改或补充信息。高风险工具（转账、重启、删除）的默认配置。</td><td>W2 D13</td></tr>
+        <tr id="term-handoff"><td>交接<span class="en">handoff</span></td><td>一个 Agent 把控制权连同上下文交给另一个 Agent。OpenAI Agents SDK 的核心多 Agent 原语。</td><td>W2 D11</td></tr>
+        <tr id="term-supervisor"><td>Supervisor</td><td>一个负责分派任务、汇总结果的协调 Agent；子 Agent 各自专注一个领域。比“全知全能单 Agent”更可控。</td><td>W2 D11</td></tr>
+        <tr id="term-mcp"><td>MCP</td><td>Model Context Protocol：把工具、资源、提示词以标准协议暴露给任意 Agent 客户端。2026-07 版本转向无状态核心。</td><td>W2 D12</td></tr>
+        <tr id="term-sandbox"><td>沙箱<span class="en">sandbox</span></td><td>限制工具可访问的文件、网络、进程与权限的隔离环境。执行模型生成的代码或命令时必须使用。</td><td>W3 D18</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="glossary-group">
+    <h2 id="production"><span class="num">E</span>评测与生产</h2>
+    <table>
+      <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
+      <tbody>
+        <tr id="term-eval"><td>评测<span class="en">eval</span></td><td>用一组可重复的任务与标准，衡量 Agent 的表现。没有评测，改进只能靠感觉。</td><td>W1 D2</td></tr>
+        <tr id="term-golden-set"><td>黄金集<span class="en">golden set</span></td><td>人工确认过期望输出的评测样本。应覆盖正常、边界、对抗与“应该拒答”的情况。</td><td>W3 D15</td></tr>
+        <tr id="term-llm-judge"><td>LLM-as-judge</td><td>用另一个模型按 rubric 给输出打分。便宜、可扩展，但需要校准，避免位置偏差与自我偏好。</td><td>W3 D15</td></tr>
+        <tr id="term-pass-k"><td>pass^k</td><td>同一任务重复 k 次全部成功的概率，衡量可靠性而非“试几次总能对”。生产系统更关心 pass^k。</td><td>W3 D16</td></tr>
+        <tr id="term-trace"><td>Trace</td><td>一次请求的完整调用链：每步的输入、输出、工具、耗时、token、错误。Agent 调试的第一现场。</td><td>W1 L1</td></tr>
+        <tr id="term-observability"><td>可观测性<span class="en">observability</span></td><td>通过日志、指标、trace 回答“系统现在发生了什么、为什么”。Agent 的非确定性让它比传统服务更重要。</td><td>W3 D17</td></tr>
+        <tr id="term-guardrail"><td>护栏<span class="en">guardrail</span></td><td>在输入、输出或工具调用前后执行的校验与限制，用于拦截不安全内容、越权操作与格式错误。</td><td>W2/W3</td></tr>
+        <tr id="term-prompt-injection"><td>提示词注入<span class="en">prompt injection</span></td><td>攻击者把恶意指令藏在网页、文档、工具返回中，诱导 Agent 偏离原任务或泄露信息。Agent 安全的核心威胁。</td><td>W3 D18</td></tr>
+        <tr id="term-token-budget"><td>Token 预算<span class="en">token budget</span></td><td>为单次任务设定的 token/成本上限。Agent 循环会放大成本，必须在设计时就设预算与降级策略。</td><td>W3 D17</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="small">
+    新增术语的规则：先在一手资料里确认英文定义，再用一句话写中文解释，最后标注首次出现的位置。
+    如果一个词有两种常见含义，拆成两条，不要合并。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="course-roadmap.html">← 课程路线图</a>
+    <a href="../lessons/0001-agent-loop.html">第 1 课：Agent 循环</a>
+    <a class="next" href="../MISSION.md">任务说明 →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# 部署笔记 · order-service
+
+- 服务名: order-service
+- 端口: 8081
+- 健康检查: /actuator/health
+- 数据库: PostgreSQL 16，连接池 HikariCP
+- 连接池上限: max-active=50（2026-09 从 20 上调）
+- 最近事故: 大促期间连接池耗尽，5xx 飙升；临时扩容后恢复
+- 回滚命令: kubectl rollout undo deploy/order-service
+- 负责人: 后端平台组
+- 备注: 任何重启/回滚操作必须先经过 on-call 审批
