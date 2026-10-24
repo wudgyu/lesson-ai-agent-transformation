@@ -1,0 +1,20 @@
+{
+  "APR-7F3K-92QX": {
+    "service": "order-service",
+    "action": "restart",
+    "expires_at": "2026-10-31T23:59:59+08:00",
+    "approved_by": "oncall-lead"
+  },
+  "APR-4M8N-11BZ": {
+    "service": "payment-service",
+    "action": "restart",
+    "expires_at": "2026-10-24T20:00:00+08:00",
+    "approved_by": "oncall-lead"
+  },
+  "APR-9Q2W-55RT": {
+    "service": "inventory-service",
+    "action": "restart",
+    "expires_at": "2026-10-31T23:59:59+08:00",
+    "approved_by": "oncall-lead"
+  }
+}

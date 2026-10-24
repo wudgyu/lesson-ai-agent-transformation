@@ -1,0 +1,8 @@
+2026-10-24T20:10:00+08:00 INFO  [payment-service] Started PaymentServiceApplication in 3.8 seconds (JVM running for 4.6)
+2026-10-24T20:12:10+08:00 INFO  [payment-service] POST /api/payments 200 86ms
+2026-10-24T20:15:00+08:00 INFO  [payment-service] POST /api/payments 200 91ms
+2026-10-24T20:20:00+08:00 INFO  [payment-service] GET /actuator/health 200 2ms
+2026-10-24T20:25:00+08:00 WARN  [payment-service] Downstream order-service retry budget at 60%
+2026-10-24T20:30:00+08:00 INFO  [payment-service] POST /api/payments 200 88ms
+2026-10-24T20:35:00+08:00 INFO  [payment-service] GET /actuator/health 200 2ms
+2026-10-24T20:39:00+08:00 INFO  [payment-service] POST /api/payments 200 84ms

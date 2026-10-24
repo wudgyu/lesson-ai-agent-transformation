@@ -1,0 +1,44 @@
+{
+  "order-service": {
+    "port": 8081,
+    "owner": "backend-platform",
+    "dependencies": ["payment-service", "inventory-service"],
+    "status": "degraded",
+    "error_rate_5m": 0.18,
+    "p99_latency_ms": 2400,
+    "db_pool": {"used": 48, "max": 50},
+    "recent_deploy": {
+      "version": "v2.14.1",
+      "at": "2026-10-24T20:10:00+08:00",
+      "commit": "a1b2c3d"
+    }
+  },
+  "payment-service": {
+    "port": 8082,
+    "owner": "payments",
+    "dependencies": ["order-service"],
+    "status": "healthy",
+    "error_rate_5m": 0.002,
+    "p99_latency_ms": 180,
+    "db_pool": {"used": 12, "max": 40},
+    "recent_deploy": {
+      "version": "v3.2.0",
+      "at": "2026-10-23T15:40:00+08:00",
+      "commit": "e4f5g6h"
+    }
+  },
+  "inventory-service": {
+    "port": 8083,
+    "owner": "supply-chain",
+    "dependencies": [],
+    "status": "healthy",
+    "error_rate_5m": 0.004,
+    "p99_latency_ms": 210,
+    "db_pool": {"used": 8, "max": 30},
+    "recent_deploy": {
+      "version": "v1.9.2",
+      "at": "2026-10-22T11:05:00+08:00",
+      "commit": "i7j8k9l"
+    }
+  }
+}

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具设计清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .checklist-print { margin: 1rem 0 1.6rem; }
+  .checklist-print li { margin: 0.45rem 0; }
+  .tmpl {
+    border: 1px solid var(--rule-strong);
+    border-radius: 4px;
+    padding: 0.9rem 1rem;
+    margin: 1.2rem 0;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+  }
+  .tmpl .label {
+    font-family: var(--sans);
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.35rem;
+  }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>工具设计清单</h1>
+  <p class="subtitle">给一个非确定性客户端写 API 时，逐项检查。</p>
+  <div class="meta">
+    <span>配套 Lesson 0002</span>
+    <span>可打印</span>
+    <span>每次新增工具时过一遍</span>
+  </div>
+
+  <p class="lede">
+    工具是确定性的代码与非确定性的模型之间的契约。模型只读得到 name、description、
+    schema 和返回值；它不会读你的源码、Javadoc 或 wiki。下面的清单逐项对应这个约束。
+  </p>
+
+  <div class="toc no-print">
+    <div class="toc-title">清单内容</div>
+    <ol>
+      <li><a href="#principles">五个原则</a></li>
+      <li><a href="#schema">Schema 模板</a></li>
+      <li><a href="#errors">错误信息模板</a></li>
+      <li><a href="#write">写操作检查</a></li>
+      <li><a href="#eval">评测检查</a></li>
+      <li><a href="#before">上线前 8 问</a></li>
+    </ol>
+  </div>
+
+  <h2 id="principles"><span class="num">01</span>五个原则</h2>
+
+  <ul class="checklist checklist-print">
+    <li><label><input type="checkbox"><span><strong>少而好：</strong>两个工具是否总是一起被调用？如果是，合并成一个。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>少而好：</strong>是否只是把每个后端 API 1:1 包了一层？删掉一半，模型会不会更容易选？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>命名与边界：</strong>工具名是否“动词 + 对象”（<code>get_service_health</code>），而不是 <code>get</code> / <code>search</code>？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>命名与边界：</strong>参数名是否自解释（<code>service</code> 而非 <code>svc</code>，<code>since_minutes</code> 而非 <code>t</code>）？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>命名与边界：</strong>是否用 enum / minimum / maximum 表达了合法范围？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>返回语义：</strong>是否返回了名称、状态、单位与摘要，而不是裸 ID、数字编码、内部主键？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>返回语义：</strong>模型能否直接引用返回中的一句话来回答用户？是否需要二次查询才能理解？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>Token 效率：</strong>是否有过滤、分页、条数上限、单行截断？是否返回了 <code>matched</code> / <code>shown</code>？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>Token 效率：</strong>是否只返回 top-k 相关片段，而不是整个文档或整张表？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>Description：</strong>是否写清了“何时用、何时不用、默认值、失败时怎么办”？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>Description：</strong>是否给了 1–2 个真实调用示例或反例？</span></label></li>
+  </ul>
+
+  <h2 id="schema"><span class="num">02</span>Schema 模板</h2>
+
+  <div class="tmpl">
+    <div class="label">Function schema</div>
+    <pre><code>{
+  "name": "verb_object",
+  "description": "一句话说明做什么。用户问【场景 A】时使用；\n不要用于【场景 B】。默认【默认值】；\n失败时返回【错误格式】。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "service": {
+        "type": "string",
+        "description": "服务名，例如 order-service"
+      },
+      "level": {
+        "type": "string",
+        "enum": ["ERROR", "WARN", "INFO", "ALL"],
+        "default": "ERROR",
+        "description": "先查 ERROR，需要背景时再查 WARN/INFO"
+      }
+    },
+    "required": ["service"]
+  }
+}</code></pre>
+  </div>
+
+  <p class="small">
+    原则：参数越少越好，但必要的边界（enum、范围、默认值）不能省。
+    Schema 是模型唯一能验证的契约；不要把约束藏在实现里。
+  </p>
+
+  <h2 id="errors"><span class="num">03</span>错误信息模板</h2>
+
+  <div class="formula">
+    ERROR: <strong>哪里错了</strong> · <strong>合法值 / 下一步</strong> · <strong>不要做什么</strong>
+  </div>
+
+  <div class="compare">
+    <div class="bad">
+      <h4>坏错误</h4>
+      <pre><code>ERROR: KeyError: 'svc'
+ERROR: failed
+ERROR: 400</code></pre>
+      <p>模型只能重试或编造。</p>
+    </div>
+    <div class="good">
+      <h4>好错误</h4>
+      <pre><code>ERROR: unknown service 'order-service'.
+Available: inventory-service,
+payment-service, order-service
+
+ERROR: approval_id is required for
+restart. Ask the on-call lead for a
+valid approval; do not guess.</code></pre>
+      <p>模型能改参数、换工具或转人工。</p>
+    </div>
+  </div>
+
+  <h2 id="write"><span class="num">04</span>写操作检查</h2>
+
+  <ul class="checklist checklist-print">
+    <li><label><input type="checkbox"><span><strong>最小权限：</strong>这个工具是否只暴露了完成任务所需的最小能力？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>审批：</strong>是否有 <code>approval_id</code> 或等价授权？是否校验服务、动作、过期时间？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>幂等：</strong>同一审批单重复到达时，是否返回同一结果（<code>noop</code> / 原收据），而不是再执行一次？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>审计：</strong>是否记录了谁、何时、以什么理由执行了什么？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>错误不泄露：</strong>错误信息是否避免了 token、内部路径、其他租户的数据？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>默认拒绝：</strong>没有审批、参数不全、服务未知时，是否一律拒绝？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>Prompt 不是边界：</strong>把系统提示词删掉，这个工具还安全吗？</span></label></li>
+  </ul>
+
+  <h2 id="eval"><span class="num">05</span>评测检查</h2>
+
+  <table>
+    <thead><tr><th>检查项</th><th>最低要求</th></tr></thead>
+    <tbody>
+      <tr><td>用例覆盖</td><td>正常、边界、对抗（注入/越权）、应该拒答，各至少 1 条</td></tr>
+      <tr><td>pass</td><td>答案关键事实 + 安全规则；不要把“第一步选对”硬塞进 pass</td></tr>
+      <tr><td>first-tool</td><td>诊断指标：模型第一步是否选了合适工具</td></tr>
+      <tr><td>steps / tokens</td><td>同一任务的平均步数与 token；用于比较工具粒度</td></tr>
+      <tr><td>safety</td><td>写操作是否被审批拦住；是否出现越权/泄露</td></tr>
+      <tr><td>失败分类</td><td>选错工具 / 参数写错 / 返回不可用 / 任务定义不清</td></tr>
+      <tr><td>回归</td><td>每次改 description 或 schema 后重跑同一组用例</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="before"><span class="num">06</span>上线前 8 问</h2>
+
+  <ol>
+    <li>如果模型把两个工具搞混，用户会看到什么？</li>
+    <li>工具返回 10 倍数据时，上下文还撑得住吗？</li>
+    <li>工具报错时，模型有没有足够信息自己恢复？</li>
+    <li>写操作在模型“猜”参数时，会不会造成不可逆后果？</li>
+    <li>同一请求重试两次，会发生什么？</li>
+    <li>换一个更便宜/更笨的模型，工具还能用吗？</li>
+    <li>把系统提示词删掉，安全性还剩多少？</li>
+    <li>你能用一条 trace 解释一次失败吗？</li>
+  </ol>
+
+  <div class="source-card">
+    <div class="label">一手资料</div>
+    <h3>Anthropic — Writing Effective Tools for Agents</h3>
+    <p>五个原则、工具评估循环、用 agent 改进工具的方法。</p>
+    <p><a href="https://www.anthropic.com/engineering/writing-tools-for-agents">anthropic.com/engineering/writing-tools-for-agents</a></p>
+  </div>
+
+  <nav class="footer-nav">
+    <a href="../lessons/0002-tool-design.html">← 第 2 课：工具设计</a>
+    <a href="course-roadmap.html">课程路线图</a>
+    <a href="glossary.html">术语表</a>
+    <a class="next" href="../labs/0002-tool-design/">Lab 2 →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

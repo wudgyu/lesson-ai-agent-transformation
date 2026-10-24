@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 课 · 工具设计：Agent 聪明的一半</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 第 1 周 · 第 2 课</div>
+  <h1>工具设计</h1>
+  <p class="subtitle">Agent 聪明的一半，取决于你给它什么样的工具。</p>
+  <div class="meta">
+    <span>Lesson 0002</span>
+    <span>约 60 分钟</span>
+    <span>阅读 15′ · 测验 5′ · Lab 40′</span>
+    <span>前半程可离线完成</span>
+  </div>
+
+  <p class="lede">
+    同一个模型、同一个循环，换一套工具，表现可能差出一个数量级。
+    但问题通常不在模型：它看到的只有工具的名字、描述、参数 schema 和返回值——
+    你的源码、Javadoc、内部 wiki，它一概看不见。今天我们不调模型，只改工具。
+  </p>
+
+  <details class="recall">
+    <summary>60 秒回忆：先别往下看，回答第 1 课的三个问题</summary>
+    <ol>
+      <li>Agent 循环的四个零件是什么？</li>
+      <li>模型真的“执行”了工具吗？</li>
+      <li>为什么 assistant 的 <code>tool_calls</code> 与 <code>tool</code> 消息必须用 id 配对？</li>
+    </ol>
+    <p><strong>对答案：</strong>LLM + Tools + Loop + Stop condition；没有，执行的是你的代码；因为下一轮 API 需要一一对应，缺一个就 400。</p>
+  </details>
+
+  <div class="toc no-print">
+    <div class="toc-title">本课地图</div>
+    <ol>
+      <li><a href="#contract">工具是给谁设计的</a></li>
+      <li><a href="#principles">五个原则</a></li>
+      <li><a href="#errors">错误信息也是接口</a></li>
+      <li><a href="#write">写操作：权限、审批、幂等</a></li>
+      <li><a href="#prove">怎么证明工具有效</a></li>
+      <li><a href="#quiz">检验一下</a></li>
+      <li><a href="#lab">Lab：7 个薄包装 vs 4 个高层工具</a></li>
+      <li><a href="#java">和 Java 后端对照</a></li>
+    </ol>
+  </div>
+
+  <div class="callout win">
+    <span class="label">本课结束时，你能</span>
+    <p>① 用五个原则审查一套工具；② 把一个“能跑但难用”的工具集重构成高层工具；③ 用 10 例评测说明重构前后在步数、token 与安全性上的差异。</p>
+  </div>
+
+  <h2 id="contract"><span class="num">01</span>工具是给谁设计的<a class="anchor" href="#contract">¶</a></h2>
+
+  <p>
+    先看一个熟悉的失败现场：用户问“过去 30 分钟有哪些 ERROR 日志”，模型却先调 <code>list_logs</code>，
+    再调 <code>grep_logs</code>，把整个日志文件捞回来；或者用户说“帮我重启服务”，
+    模型直接调了一个没有审批参数的重启工具。
+  </p>
+
+  <p>
+    直觉会说“模型不够聪明”。但更常见的原因是：<strong>工具没有把选择所需的信息暴露出来</strong>。
+    模型不知道 <code>grep_logs</code> 和 <code>query_logs</code> 的边界，因为描述里没写；
+    它不知道重启需要审批，因为 schema 里根本没有这个参数。
+  </p>
+
+  <div class="callout note">
+    <span class="label">ACI：Agent–Computer Interface</span>
+    <p>
+      Anthropic 把工具设计称为 ACI，类比人机接口 HCI。工具是<strong>确定性代码</strong>与
+      <strong>非确定性模型</strong>之间的契约：模型只通过 name、description、schema 和返回值来理解它。
+      <a href="https://www.anthropic.com/engineering/writing-tools-for-agents">Writing effective tools for agents</a>
+    </p>
+  </div>
+
+  <p>
+    所以，工具设计不是“把后端 API 包一层”，而是<strong>为一个非确定性客户端设计 API</strong>。
+    你熟悉的接口设计原则仍然成立，但多了一个约束：客户端不会读文档，只会读你喂给它的那几百个 token。
+  </p>
+
+  <h2 id="principles"><span class="num">02</span>五个原则<a class="anchor" href="#principles">¶</a></h2>
+
+  <h3>原则 1 · 少而好：合并工作流，不要 1:1 包 API</h3>
+
+  <p>
+    Lab 里的 baseline 有 7 个工具：<code>list_services</code>、<code>get_service</code>、
+    <code>get_metrics</code>、<code>get_deploys</code>、<code>list_logs</code>、
+    <code>grep_logs</code>、<code>restart_service</code>。只回答“order-service 健康吗”，
+    模型就要组合三次调用。refactored 把它压成 4 个：
+  </p>
+
+  <table>
+    <thead><tr><th>任务</th><th>Baseline</th><th>Refactored</th></tr></thead>
+    <tbody>
+      <tr><td>健康检查</td><td><code>get_service</code> + <code>get_metrics</code> + <code>get_deploys</code></td><td><code>get_service_health</code></td></tr>
+      <tr><td>日志查询</td><td><code>list_logs</code> + <code>grep_logs</code></td><td><code>query_logs</code></td></tr>
+      <tr><td>处置知识</td><td>（没有）</td><td><code>search_runbooks</code></td></tr>
+      <tr><td>重启</td><td><code>restart_service</code>（无审批）</td><td><code>restart_service</code>（审批 + 幂等）</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    每多一个工具，模型就多一个选择歧义，schema 也多占一段上下文。
+    Anthropic 的建议是：先问“删掉它、和别的工具合并，会不会更好？”
+    如果两个工具总是一起被调用，它们大概率应该是一个工具。
+  </p>
+
+  <h3>原则 2 · 命名与边界：让参数自己解释自己</h3>
+
+  <div class="compare">
+    <div class="bad">
+      <h4>Baseline</h4>
+      <pre><code>"grep_logs"
+  svc: string
+  p: string</code></pre>
+      <p><code>p</code> 是 pattern 还是 page？<code>svc</code> 能不能接受短名？没有级别、时间、条数，模型只能猜。</p>
+    </div>
+    <div class="good">
+      <h4>Refactored</h4>
+      <pre><code>"query_logs"
+  service: string
+  level: ERROR|WARN|INFO|ALL
+  since_minutes: 1..1440
+  limit: 1..50</code></pre>
+      <p>参数名、枚举、范围本身就是说明。模型不需要读你的实现，也能把调用写对。</p>
+    </div>
+  </div>
+
+  <p>
+    命名空间同样重要：工具名要能区分领域与动作。<code>get_service_health</code> 比 <code>get</code> 好，
+    <code>search_runbooks</code> 比 <code>search</code> 好。工具多了以后，前缀是最便宜的消歧手段。
+  </p>
+
+  <h3>原则 3 · 返回语义化上下文，不要裸 ID</h3>
+
+  <div class="compare">
+    <div class="bad">
+      <h4>Baseline 风格</h4>
+      <pre><code>{
+  "status": 2,
+  "pool": 48,
+  "deploy": "a1b2c3d"
+}</code></pre>
+      <p>2 是什么？48 的单位？a1b2c3d 是版本还是 commit？模型只能再查一次。</p>
+    </div>
+    <div class="good">
+      <h4>Refactored 风格</h4>
+      <pre><code>{
+  "summary": "order-service 当前降级，连接池 48/50。",
+  "status": "degraded",
+  "db_pool": {"used": 48, "max": 50},
+  "recent_deploy": {
+    "version": "v2.14.1",
+    "at": "2026-10-24T20:10:00+08:00"
+  }
+}</code></pre>
+      <p><code>summary</code> 不是装饰：它把模型下一步要做的推理，提前压缩成一句可直接引用的话。</p>
+    </div>
+  </div>
+
+  <p>
+    裸 ID 还有一个隐性成本：模型为了理解它，会发起额外的查询。
+    每次额外查询都是一次往返、一次 token 账单、一次出错机会。
+  </p>
+
+  <h3>原则 4 · Token 效率：过滤、分页、截断</h3>
+
+  <p>
+    <code>grep_logs</code> 会把所有匹配行拼成一个大字符串，最多 8000 字符；
+    <code>query_logs</code> 先按级别和时间窗口过滤，再用 <code>limit</code> 截断，
+    单行超过 500 字符也会截断，并在头部返回 <code>matched</code> / <code>shown</code>。
+  </p>
+
+  <pre class="trace"><span class="ok">service=order-service level=ERROR window=30m matched=13 shown=5</span>
+2026-10-24T20:12:03+08:00 ERROR [order-service] HikariPool-1 - Connection is not available...
+2026-10-24T20:12:04+08:00 ERROR [order-service] GET /api/orders 500 30012ms
+...</pre>
+
+  <p>
+    上下文窗口是预算，不是垃圾桶。工具返回的每一行，都在和系统提示词、对话历史、其他工具结果争夺模型注意力。
+    能返回 5 行时，不要返回 500 行。
+  </p>
+
+  <h3>原则 5 · Description 是 prompt，不是注释</h3>
+
+  <div class="compare">
+    <div class="bad">
+      <h4>Baseline</h4>
+      <pre><code>"Grep logs."</code></pre>
+      <p>模型不知道：查哪个服务的日志？按什么过滤？返回多少条？什么时候不该用？</p>
+    </div>
+    <div class="good">
+      <h4>Refactored</h4>
+      <pre><code>按级别和时间窗口查询某个服务的日志，
+返回带时间戳的匹配行，并附带
+matched/shown 计数。用户问“过去 N 分钟
+有哪些 ERROR/WARN”时使用。默认
+level=ERROR、since_minutes=30、limit=20；
+不要用 level=ALL 拉全量日志。</code></pre>
+      <p>何时用、默认值、反例，都写进去了。这就是在“prompt 工程”工具调用行为。</p>
+    </div>
+  </div>
+
+  <p>
+    Anthropic 的说法是：JSON Schema 只能表达结构，表达不了使用模式。
+    示例、边界、反例、失败时怎么办，都要写进 description。
+  </p>
+
+  <h2 id="errors"><span class="num">03</span>错误信息也是接口<a class="anchor" href="#errors">¶</a></h2>
+
+  <p>
+    工具报错时，模型会读错误文本，并决定下一步。错误信息写得好，模型能自己恢复；
+    写得差，它会重试同一个坏调用，或者干脆编一个答案。
+  </p>
+
+  <div class="compare">
+    <div class="bad">
+      <h4>坏错误</h4>
+      <pre><code>ERROR: KeyError: 'svc'
+ERROR: failed
+ERROR: 400</code></pre>
+      <p>模型不知道是参数名错了、服务不存在，还是权限问题。只能瞎试。</p>
+    </div>
+    <div class="good">
+      <h4>好错误</h4>
+      <pre><code>ERROR: unknown service 'order-service'.
+Available: inventory-service,
+payment-service, order-service
+
+ERROR: approval_id is required for
+restart. Ask the on-call lead for a
+valid approval; do not guess.</code></pre>
+      <p>说清三件事：发生了什么、下一步能怎么做、什么不要做。</p>
+    </div>
+  </div>
+
+  <p>
+    一个好错误信息应该回答：<strong>哪里错了？可选的合法值是什么？模型接下来该做什么？</strong>
+    这和你写 4xx 响应时给客户端的信息是一样的，只是客户端从程序变成了模型。
+  </p>
+
+  <h2 id="write"><span class="num">04</span>写操作：权限、审批、幂等<a class="anchor" href="#write">¶</a></h2>
+
+  <p>
+    读工具出错，最多是答案不对；写工具出错，可能是生产事故。
+    Lab 里两个 <code>restart_service</code> 的差别，正好对应后端工程师熟悉的三层防线：
+  </p>
+
+  <table>
+    <thead><tr><th>防线</th><th>Baseline</th><th>Refactored</th></tr></thead>
+    <tbody>
+      <tr><td>最小权限</td><td>任何调用都能重启</td><td>必须提供 <code>approval_id</code></td></tr>
+      <tr><td>审批校验</td><td>无</td><td>校验服务、动作、过期时间</td></tr>
+      <tr><td>幂等</td><td>重复调用重复重启</td><td>同一审批单第二次返回 <code>noop</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <span class="label">Prompt 不是安全边界</span>
+    <p>
+      你可以在系统提示词里写一百遍“不要随便重启”，但模型仍然可能调用工具。
+      真正的边界在工具层：没有 <code>approval_id</code> 就拒绝执行，参数不合法就返回错误。
+      这与“前端校验不能替代后端鉴权”是同一个道理。
+      <a href="https://genai.owasp.org/llm-top-10/">OWASP LLM Top 10 · Excessive Agency</a>
+    </p>
+  </div>
+
+  <p>
+    还有一个容易被忽略的点：<strong>幂等键应该绑定审批单，而不是绑定调用次数</strong>。
+    同一张审批单重复到达（重试、断点恢复、模型重复调用），应该返回同一个结果，而不是再重启一次。
+  </p>
+
+  <p class="small">
+    Lab 的系统提示词刻意只要求“遵守工具要求的审批流程”，没有写死“必须有 approval_id”。
+    这样 baseline 的缺陷才会暴露出来。如果你在提示词里写死“不许重启”，baseline 看起来也会很安全——
+    但那只是模型这一次听话，不是系统保证。换一个模型、换一句更强势的用户指令，边界就消失了。
+  </p>
+
+  <h2 id="prove"><span class="num">05</span>怎么证明工具有效<a class="anchor" href="#prove">¶</a></h2>
+
+  <p>
+    “感觉模型变聪明了”不是证据。工具设计的效果，可以用同一组任务、同一套循环来测：
+  </p>
+
+  <table>
+    <thead><tr><th>指标</th><th>回答的问题</th></tr></thead>
+    <tbody>
+      <tr><td>first-tool accuracy</td><td>模型第一步有没有选对工具？</td></tr>
+      <tr><td>answer hit rate</td><td>最终回答有没有包含关键事实？</td></tr>
+      <tr><td>safety</td><td>写操作有没有被审批拦住？</td></tr>
+      <tr><td>steps / tokens</td><td>同一任务要付多少步数与上下文成本？</td></tr>
+      <tr><td>failed trajectories</td><td>失败是模型选错、参数写错，还是工具返回不可用？</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    这就是 Lab 里 <code>eval.py</code> 做的事。它不追求“排行榜分数”，只回答一个工程问题：
+    <strong>换一套工具，模型在同样的 10 个任务上，是否更少走弯路、更少花钱、更少闯祸？</strong>
+    第 3 周我们会把这件事扩展成完整的评测体系。
+  </p>
+
+  <h2 id="quiz"><span class="num">06</span>检验一下<a class="anchor" href="#quiz">¶</a></h2>
+
+  <p class="small">先自己想，再点选项。答错会给出解释。</p>
+
+  <div class="quiz" data-quiz>
+    <div class="quiz-q" data-answer="c" data-explain="模型只看得到 name、description、schema 和返回值。description 要写清何时使用、何时不用、默认值与边界；实现细节它看不到。">
+      <p class="quiz-prompt">工具的 description 最应该包含什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>函数的实现语言与依赖版本</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>参数在数据库中的字段类型</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>何时使用、何时不用与示例</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>作者信息与最近修改时间</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="a" data-explain="每个工具都会增加选择歧义与 schema token。能合并的工作流应该合并；能一次返回的聚合信息不要拆成三个工具。">
+      <p class="quiz-prompt">为什么不建议把每个后端 API 都包成工具？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>工具太多会增加选择歧义与 token 成本</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>模型无法理解超过三个工具</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>每个工具都必须单独计费</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>工具数量会影响模型参数量</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="裸 UUID 对模型没有语义，它只能再发起一次查询来理解这个 ID。返回名称、状态、单位与摘要，能减少往返与幻觉。">
+      <p class="quiz-prompt">工具返回裸 UUID 的主要问题是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>UUID 比整数占用更多 token</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>模型无法据此推理，只能再查一次</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>UUID 不能被 JSON 序列化</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>数据库不支持 UUID 主键</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="d" data-explain="写操作的边界必须做在工具层：权限校验、审批单、过期时间与幂等。系统提示词只能影响模型行为，不能替代授权。">
+      <p class="quiz-prompt">设计重启、删除类写操作工具时，最重要的是？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>把描述写得更短以节省 token</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>让参数尽量少以方便模型调用</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>返回更详细的成功日志</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>权限校验、审批与幂等</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-score" aria-live="polite"></div>
+  </div>
+
+  <h2 id="lab"><span class="num">07</span>Lab：7 个薄包装 vs 4 个高层工具<a class="anchor" href="#lab">¶</a></h2>
+
+  <p>
+    代码在 <a href="../labs/0002-tool-design/">labs/0002-tool-design/</a>。
+    场景是一个小型 Java 微服务系统：order-service 正在连接池耗尽，payment-service 健康。
+  </p>
+
+  <h3>Step 1 · 离线校验（2 分钟）</h3>
+  <pre><code>cd labs/0002-tool-design
+python3 eval.py --validate
+python3 -m unittest -v</code></pre>
+  <p>
+    <code>--validate</code> 检查 10 个评测用例的期望工具是否都存在；
+    15 个契约测试覆盖健康快照、日志过滤、runbook 检索、审批与幂等。
+  </p>
+
+  <h3>Step 2 · 看两种工具设计的循环差异（3 分钟）</h3>
+  <pre><code>python3 agent.py --demo --tools baseline
+python3 agent.py --demo --tools refactored</code></pre>
+  <p>
+    同一个问题，baseline 走 4 步（3 次工具 + 1 次回答），refactored 走 2 步（1 次工具 + 1 次回答）。
+    注意 refactored 的 observation 里包含 <code>summary</code>——模型可以直接引用，不需要自己拼。
+  </p>
+
+  <h3>Step 3 · 读代码，做映射（8 分钟）</h3>
+  <p>
+    打开 <a href="../labs/0002-tool-design/tools_baseline.py">tools_baseline.py</a> 与
+    <a href="../labs/0002-tool-design/tools_refactored.py">tools_refactored.py</a>，填出这张表：
+  </p>
+  <table>
+    <thead><tr><th>Baseline 的组合</th><th>Refactored 的合并</th><th>省掉了什么</th></tr></thead>
+    <tbody>
+      <tr><td><code>get_service</code> + <code>get_metrics</code> + <code>get_deploys</code></td><td><code>get_service_health</code></td><td>2 次往返、2 段 schema、1 次重新拼装</td></tr>
+      <tr><td><code>list_logs</code> + <code>grep_logs</code></td><td><code>query_logs</code></td><td>文件名中转、无过滤的全量返回</td></tr>
+      <tr><td>（无）</td><td><code>search_runbooks</code></td><td>从“猜处置步骤”变成“引用来源”</td></tr>
+      <tr><td><code>restart_service</code>（无审批）</td><td><code>restart_service</code>（审批 + 幂等）</td><td>一次潜在的生产事故</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Step 4 · 跑真实评测（20 分钟，需要 API key）</h3>
+  <pre><code>cp .env.example .env
+# 填写 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL
+
+python3 eval.py --tools baseline --out baseline.json
+python3 eval.py --tools refactored --out refactored.json</code></pre>
+  <p>
+    先看 baseline 的 <code>first-tool</code>、<code>avg steps</code>、<code>safety</code>，
+    再看 refactored。重点不是“谁分高”，而是<strong>失败轨迹长什么样</strong>：
+    模型是选错了工具、写错了参数，还是被工具的返回格式绊住了？
+  </p>
+
+  <div class="callout note">
+    <span class="label">没有 API key？</span>
+    <p>
+      先完成 Step 1–3、Step 5 和契约测试；真实评测可以等配置好模型后再跑。
+      不要用脚本化的 demo 结果冒充模型评测——那只能验证管线，不能证明工具设计。
+    </p>
+  </div>
+
+  <h3>Step 5 · 做一次“描述导致误选”的实验（8 分钟）</h3>
+  <p>
+    把 <code>query_logs</code> 的 description 改成一句“查询日志”，去掉级别/时间窗口的说明。
+    重跑 Q2、Q7：
+  </p>
+  <pre><code>python3 eval.py --tools refactored --case Q2 --case Q7</code></pre>
+  <p>
+    观察 first-tool 与 answer 是否变化。然后改回原描述。
+    这个实验会让你亲眼看到：<strong>description 不是文档，是行为控制。</strong>
+  </p>
+
+  <h3>Step 6 · 回答三个问题</h3>
+  <ol>
+    <li>如果把 7 个工具继续拆成 12 个，first-tool accuracy 会升还是降？为什么？</li>
+    <li>Q8 的 safety 指标，能不能只靠系统提示词保证？为什么？</li>
+    <li>如果 <code>get_service_health</code> 返回 5000 token 的原始指标，它还算“高层工具”吗？</li>
+  </ol>
+
+  <h3>成功标准</h3>
+  <ul class="checklist" data-persist="lesson2-lab">
+    <li><label><input type="checkbox"><span><code>eval.py --validate</code> 通过，15 个测试全绿</span></label></li>
+    <li><label><input type="checkbox"><span>能说出 baseline 的 7 个工具分别被合并到了哪里</span></label></li>
+    <li><label><input type="checkbox"><span>能解释为什么 <code>get_service_health</code> 要返回 <code>summary</code></span></label></li>
+    <li><label><input type="checkbox"><span>能指出 Q8 在 baseline 与 refactored 下的不同结局</span></label></li>
+    <li><label><input type="checkbox"><span>用真实模型跑过一次 baseline 或 refactored 评测（可选）</span></label></li>
+    <li><label><input type="checkbox"><span>完成“改描述 → 重跑 → 改回”的实验</span></label></li>
+  </ul>
+
+  <h2 id="java"><span class="num">08</span>和 Java 后端对照<a class="anchor" href="#java">¶</a></h2>
+
+  <p>
+    你已有的工程直觉，几乎可以原样迁移，只是“客户端”从程序变成了模型：
+  </p>
+
+  <table>
+    <thead><tr><th>Agent 工具</th><th>Java 后端</th></tr></thead>
+    <tbody>
+      <tr><td>tool schema</td><td>OpenAPI / 接口契约</td></tr>
+      <tr><td>description</td><td>Javadoc + 使用指南，但它会被当作行为指令执行</td></tr>
+      <tr><td><code>ToolError</code> 文本</td><td>带 <code>error_code</code> 与 <code>hint</code> 的 4xx 响应</td></tr>
+      <tr><td><code>approval_id</code></td><td>授权令牌 / 审批流 / 工单号</td></tr>
+      <tr><td>幂等键</td><td>Idempotency-Key / 去重表</td></tr>
+      <tr><td>tool-selection eval</td><td>契约测试 + 集成测试 + 生产演练</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    最大的认知转变是：<strong>模型是一个会犯错、会读错、会自作主张的客户端</strong>。
+    你不能假设它会按文档调用；你只能用更好的契约、更明确的错误、更硬的边界，让它“不容易错”。
+  </p>
+
+  <div class="source-card">
+    <div class="label">本课精读</div>
+    <h3>Anthropic — Writing Effective Tools for Agents</h3>
+    <p>
+      读完全文（约 15 分钟）。重点看五个原则、工具评估循环，以及“用 agent 来改进工具”的方法。
+      读完后回到 lab，对照 <code>tools_refactored.py</code> 的 description，看它对应了哪几条。
+    </p>
+    <p><a href="https://www.anthropic.com/engineering/writing-tools-for-agents">anthropic.com/engineering/writing-tools-for-agents</a></p>
+    <p class="small">
+      选读：<a href="https://platform.openai.com/docs/guides/function-calling">OpenAI Function Calling 文档</a> ·
+      <a href="https://genai.owasp.org/llm-top-10/">OWASP LLM Top 10</a>
+    </p>
+  </div>
+
+  <p class="small center no-print">
+    打印版：<a href="../reference/tool-design-checklist.html">工具设计清单</a> ·
+    每次新增工具时逐项过一遍。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">卡住了？</span>
+    <p>
+      回到终端问你的老师：“lesson 0002 里 Q8 的 safety 为什么 baseline 一定挂？”
+      或者把 <code>eval-report-baseline.json</code> 里的失败轨迹贴过来，我们一起分析。
+    </p>
+  </div>
+
+  <p class="small center no-print" style="margin-top:2.2rem;">
+    下一课：RAG——当工具需要在上万段私有文档里找到正确的那几段。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="0001-agent-loop.html">← 第 1 课：Agent 循环</a>
+    <a href="../reference/course-roadmap.html">课程路线图</a>
+    <a href="../reference/glossary.html">术语表</a>
+    <span class="next disabled">第 3 课：RAG（即将解锁）</span>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

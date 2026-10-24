@@ -1,0 +1,5 @@
+2026-10-24T20:10:00+08:00 INFO  [inventory-service] Started InventoryServiceApplication in 3.1 seconds (JVM running for 3.9)
+2026-10-24T20:14:00+08:00 INFO  [inventory-service] GET /api/inventory/8821 200 18ms
+2026-10-24T20:22:00+08:00 INFO  [inventory-service] GET /api/inventory/8821 200 21ms
+2026-10-24T20:31:00+08:00 INFO  [inventory-service] GET /actuator/health 200 2ms
+2026-10-24T20:39:00+08:00 INFO  [inventory-service] GET /api/inventory/8821 200 19ms

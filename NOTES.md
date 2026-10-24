@@ -29,6 +29,12 @@
 - 默认项目：**RepoMedic**（Java 代码库排障 Agent）。第 3 周开始前确认是否沿用、换领域或接入你公司的真实代码库。
 - 项目必须包含：RAG、工具、记忆、HITL、评测、tracing、部署。缺一项就不算“生产级”。
 
+## 进度
+
+- 2026-10-23：Lesson 0001《Agent 循环》交付（含 `labs/0001-mini-agent`）。
+- 2026-10-24：Lesson 0002《工具设计（ACI）》交付（含 `labs/0002-tool-design` 的 baseline/refactored 对照评测）。
+- 尚未获得 lab 1 / lab 2 的完成证据；下一次教学前先问 1–2 个检索问题，确认循环与工具契约是否真的掌握。
+
 ## 待确认
 
 - 模型供应商与可用模型（DeepSeek / Qwen / GLM / OpenAI / 本地 Ollama）。

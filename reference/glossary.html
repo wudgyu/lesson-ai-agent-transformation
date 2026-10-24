@@ -124,6 +124,7 @@
         <tr id="term-reducer"><td>Reducer</td><td>定义“新值如何合并进旧状态”的函数。例如消息列表用 append，计数器用求和。写错 reducer 是状态丢失的常见原因。</td><td>W2 D9</td></tr>
         <tr id="term-checkpoint"><td>检查点<span class="en">checkpoint</span></td><td>把 Agent 每一步的状态持久化。支持断点恢复、时间旅行调试、多会话隔离。</td><td>W2 D10</td></tr>
         <tr id="term-durable-execution"><td>持久化执行<span class="en">durable execution</span></td><td>进程崩溃或人工暂停后，任务能从上次检查点继续，且不重复执行有副作用的操作。</td><td>W2 D13</td></tr>
+        <tr id="term-idempotency"><td>幂等<span class="en">idempotency</span></td><td>同一操作重复执行，效果与执行一次相同。Agent 重试、断点恢复、模型重复调用时，写工具必须幂等。</td><td>W1 D6</td></tr>
         <tr id="term-hitl"><td>人在回路<span class="en">human-in-the-loop</span></td><td>在关键动作前暂停，等待人类批准、修改或补充信息。高风险工具（转账、重启、删除）的默认配置。</td><td>W2 D13</td></tr>
         <tr id="term-handoff"><td>交接<span class="en">handoff</span></td><td>一个 Agent 把控制权连同上下文交给另一个 Agent。OpenAI Agents SDK 的核心多 Agent 原语。</td><td>W2 D11</td></tr>
         <tr id="term-supervisor"><td>Supervisor</td><td>一个负责分派任务、汇总结果的协调 Agent；子 Agent 各自专注一个领域。比“全知全能单 Agent”更可控。</td><td>W2 D11</td></tr>
@@ -139,12 +140,14 @@
       <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
       <tbody>
         <tr id="term-eval"><td>评测<span class="en">eval</span></td><td>用一组可重复的任务与标准，衡量 Agent 的表现。没有评测，改进只能靠感觉。</td><td>W1 D2</td></tr>
+        <tr id="term-tool-selection"><td>工具选择准确率<span class="en">tool-selection accuracy</span></td><td>Agent 第一步是否选中了合适工具的比例。衡量工具命名、描述与粒度是否清晰的核心指标。</td><td>W1 D6</td></tr>
         <tr id="term-golden-set"><td>黄金集<span class="en">golden set</span></td><td>人工确认过期望输出的评测样本。应覆盖正常、边界、对抗与“应该拒答”的情况。</td><td>W3 D15</td></tr>
         <tr id="term-llm-judge"><td>LLM-as-judge</td><td>用另一个模型按 rubric 给输出打分。便宜、可扩展，但需要校准，避免位置偏差与自我偏好。</td><td>W3 D15</td></tr>
         <tr id="term-pass-k"><td>pass^k</td><td>同一任务重复 k 次全部成功的概率，衡量可靠性而非“试几次总能对”。生产系统更关心 pass^k。</td><td>W3 D16</td></tr>
         <tr id="term-trace"><td>Trace</td><td>一次请求的完整调用链：每步的输入、输出、工具、耗时、token、错误。Agent 调试的第一现场。</td><td>W1 L1</td></tr>
         <tr id="term-observability"><td>可观测性<span class="en">observability</span></td><td>通过日志、指标、trace 回答“系统现在发生了什么、为什么”。Agent 的非确定性让它比传统服务更重要。</td><td>W3 D17</td></tr>
         <tr id="term-guardrail"><td>护栏<span class="en">guardrail</span></td><td>在输入、输出或工具调用前后执行的校验与限制，用于拦截不安全内容、越权操作与格式错误。</td><td>W2/W3</td></tr>
+        <tr id="term-least-privilege"><td>最小权限<span class="en">least privilege</span></td><td>只给 Agent 完成任务所需的最小工具与数据权限。写操作应默认拒绝，审批后放行。</td><td>W1 D6</td></tr>
         <tr id="term-prompt-injection"><td>提示词注入<span class="en">prompt injection</span></td><td>攻击者把恶意指令藏在网页、文档、工具返回中，诱导 Agent 偏离原任务或泄露信息。Agent 安全的核心威胁。</td><td>W3 D18</td></tr>
         <tr id="term-token-budget"><td>Token 预算<span class="en">token budget</span></td><td>为单次任务设定的 token/成本上限。Agent 循环会放大成本，必须在设计时就设预算与降级策略。</td><td>W3 D17</td></tr>
       </tbody>
