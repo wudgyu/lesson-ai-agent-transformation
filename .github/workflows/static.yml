@@ -36,8 +36,9 @@ jobs:
       - name: Prepare site directory
         run: |
           mkdir -p _site
-          cp -r lessons/* _site/
+          cp -r lessons _site/lessons
           cp -r assets _site/assets
+          cp -r reference _site/reference
       - name: Generate index.html
         run: |
           cat > _site/index.html <<'EOF'
@@ -45,11 +46,11 @@ jobs:
           <html lang="zh-CN">
           <head>
             <meta charset="UTF-8">
-            <meta http-equiv="refresh" content="0; url=0001-agent-loop.html">
+            <meta http-equiv="refresh" content="0; url=lessons/0001-agent-loop.html">
             <title>跳转中...</title>
           </head>
           <body>
-            <p>正在跳转到 <a href="0001-agent-loop.html">Lesson 0001 《Agent 循环：所有框架背后，都是这 30 行代码》</a>...</p>
+            <p>正在跳转到 <a href="lessons/0001-agent-loop.html">Lesson 0001 《Agent 循环：所有框架背后，都是这 30 行代码》</a>...</p>
           </body>
           </html>
           EOF
