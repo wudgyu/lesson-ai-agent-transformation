@@ -1,9 +1,28 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-10-23。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-10-24。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
+
+### 检索与 RAG
+
+- [Anthropic — Contextual Retrieval](https://www.anthropic.com/news/contextual-retrieval)
+  **第 3 课精读**。给 chunk 补 50–100 token 情境说明，再做 contextual embeddings + contextual BM25；报告 top-20 失败率 −35% / −49% / −67%（加 rerank）。含成本与 prompt caching 细节。
+- [Pinecone — Chunking Strategies](https://www.pinecone.io/learn/chunking-strategies/)
+  chunk 大小、重叠、fixed / recursive / structure-aware / semantic 切分的取舍。第 3 课 lab 的默认值来源。
+- [Lewis et al. — Retrieval-Augmented Generation (arXiv:2005.11401)](https://arxiv.org/abs/2005.11401)
+  RAG 原始论文：参数化记忆 + 非参数化记忆。读摘要与第 1–2 节即可。
+- [Weaviate — Hybrid Search](https://docs.weaviate.io/weaviate/search/hybrid)
+  BM25 + 向量融合的工程实现，`alpha` 权重与 ranked fusion。第 3 课 hybrid 检索的对照。
+- [Ragas — Available Metrics](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/)
+  context recall / context precision / faithfulness 等 RAG 评测指标。第 3 周评测扩展的基础。
+- [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
+  embedding 模型排行榜。只作起点，最终要在自己的语料上测。
+- [Voyage — Embeddings](https://docs.voyageai.com/docs/embeddings)
+  query/document 分开编码、维度与模型选择的工程细节。
+- [Liu et al. — Lost in the Middle (arXiv:2307.03172)](https://arxiv.org/abs/2307.03172)
+  长上下文中间信息利用率下降的实证。解释为什么“全塞进去”不是方案。
 
 ### 第一性原理与架构
 

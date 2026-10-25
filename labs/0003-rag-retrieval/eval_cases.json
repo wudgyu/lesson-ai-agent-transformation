@@ -1,0 +1,157 @@
+[
+  {
+    "id": "Q01",
+    "type": "keyword",
+    "query": "TS-999 是什么错误？",
+    "evidence": [{"doc": "docs/error-codes.md", "contains": "TS-999"}],
+    "note": "精确错误码。BM25 的主场。"
+  },
+  {
+    "id": "Q02",
+    "type": "keyword",
+    "query": "TS-998 和 TS-999 有什么区别？",
+    "evidence": [
+      {"doc": "docs/error-codes.md", "contains": "TS-998"},
+      {"doc": "docs/error-codes.md", "contains": "TS-999"}
+    ],
+    "note": "两个错误码分属不同 section；需要同时召回。"
+  },
+  {
+    "id": "Q03",
+    "type": "keyword",
+    "query": "findRecentOrders 方法里发生了什么？",
+    "evidence": [{"doc": "code/OrderQueryService.java", "contains": "findRecentOrders"}],
+    "note": "camelCase 标识符。tokenizer 必须能拆词。"
+  },
+  {
+    "id": "Q04",
+    "type": "keyword",
+    "query": "maximum-pool-size 配成了多少？",
+    "evidence": [{"doc": "config/application-prod.yml", "contains": "maximum-pool-size: 50"}],
+    "note": "配置键 + 数值。向量检索容易把键名与注释混在一起。"
+  },
+  {
+    "id": "Q05",
+    "type": "keyword",
+    "query": "HikariPool-1 的 connection timeout 是多少？",
+    "evidence": [{"doc": "code/DataSourceConfig.java", "contains": "setConnectionTimeout(3000)"}],
+    "note": "代码里的常量。需要精确匹配方法调用。"
+  },
+  {
+    "id": "Q06",
+    "type": "keyword",
+    "query": "v2.14.1 的 commit 是什么？",
+    "evidence": [{"doc": "incidents/2026-10-24-order-pool.md", "contains": "a1b2c3d"}],
+    "note": "版本号 + commit。两者一起出现才可信。"
+  },
+  {
+    "id": "Q07",
+    "type": "semantic",
+    "query": "数据库连接被占满了，应该先看哪些指标？",
+    "evidence": [{"doc": "runbooks/db-pool.md", "contains": "db_pool.used"}],
+    "note": "口语化描述“连接被占满”，与 runbook 用词不完全重合。"
+  },
+  {
+    "id": "Q08",
+    "type": "semantic",
+    "query": "服务变慢并且大量请求失败，可能是什么原因？",
+    "evidence": [{"doc": "runbooks/db-pool.md", "contains": "5xx"}],
+    "note": "“变慢 + 请求失败”需要映射到 5xx / p99 症状。"
+  },
+  {
+    "id": "Q09",
+    "type": "semantic",
+    "query": "发布之后怎么确认可以安全回滚？",
+    "evidence": [{"doc": "runbooks/deploy-rollback.md", "contains": "kubectl rollout undo"}],
+    "note": "问的是回滚验证，不是回滚命令本身。"
+  },
+  {
+    "id": "Q10",
+    "type": "semantic",
+    "query": "线上故障时第一步应该做什么？",
+    "evidence": [{"doc": "runbooks/oncall.md", "contains": "先止血"}],
+    "note": "原则性问答。关键词“第一步”在文档中没有出现。"
+  },
+  {
+    "id": "Q11",
+    "type": "semantic",
+    "query": "订单查询接口为什么会拖慢数据库？",
+    "evidence": [{"doc": "incidents/2026-10-24-order-pool.md", "contains": "N+1"}],
+    "note": "“拖慢数据库”对应 N+1 导致的连接持有时间变长。"
+  },
+  {
+    "id": "Q12",
+    "type": "semantic",
+    "query": "怎么避免一次发布把数据库打挂？",
+    "evidence": [{"doc": "runbooks/deploy-rollback.md", "contains": "观察窗口"}],
+    "note": "“打挂”是口语，runbook 写的是观察窗口与回滚预案。"
+  },
+  {
+    "id": "Q13",
+    "type": "semantic",
+    "query": "JWT 校验为什么突然大量失败？",
+    "evidence": [{"doc": "incidents/2026-07-11-auth-jwt.md", "contains": "时钟偏移"}],
+    "note": "问的是根因，不是处置。"
+  },
+  {
+    "id": "Q14",
+    "type": "mixed",
+    "query": "order-service p99 2400ms、连接池 48/50，最可能的原因是什么？",
+    "evidence": [{"doc": "incidents/2026-10-24-order-pool.md", "contains": "N+1"}],
+    "note": "同时含精确指标与因果推理，需要健康快照之外的知识。"
+  },
+  {
+    "id": "Q15",
+    "type": "mixed",
+    "query": "回滚 order-service 需要谁批准？",
+    "evidence": [{"doc": "runbooks/deploy-rollback.md", "contains": "on-call 负责人审批"}],
+    "note": "“回滚”与“审批”分别在文档的不同位置。"
+  },
+  {
+    "id": "Q16",
+    "type": "mixed",
+    "query": "payment-service 的 TS-999 是 order-service 连接池引起的吗？",
+    "evidence": [{"doc": "incidents/2026-09-18-payment-timeout.md", "contains": "不是 order-service 的连接池问题"}],
+    "note": "错误码 + 服务名 + 否定判断。容易被 order-service 的文档抢走。"
+  },
+  {
+    "id": "Q17",
+    "type": "multi-hop",
+    "query": "v2.14.1 部署后出现了什么，和哪个类有关？",
+    "evidence": [
+      {"doc": "incidents/2026-10-24-order-pool.md", "contains": "v2.14.1"},
+      {"doc": "code/OrderQueryService.java", "contains": "findRecentOrders"}
+    ],
+    "note": "需要同时召回事故复盘与代码文件。"
+  },
+  {
+    "id": "Q18",
+    "type": "multi-hop",
+    "query": "连接池扩容后仍然耗尽，下一步查什么？",
+    "evidence": [
+      {"doc": "runbooks/db-pool.md", "contains": "慢查询"},
+      {"doc": "code/OrderQueryService.java", "contains": "N+1"}
+    ],
+    "note": "runbook 说查慢查询；代码里能找到具体的 N+1 实现。"
+  },
+  {
+    "id": "Q19",
+    "type": "multi-hop",
+    "query": "收到 DBPoolExhausted 告警后的完整处置流程",
+    "evidence": [
+      {"doc": "runbooks/oncall.md", "contains": "DBPoolExhausted"},
+      {"doc": "runbooks/db-pool.md", "contains": "扩容副本"}
+    ],
+    "note": "告警路由在 oncall，具体处置在 db-pool。"
+  },
+  {
+    "id": "Q20",
+    "type": "multi-hop",
+    "query": "order-service 和 inventory-service 的连接池打满，根因分别是什么？",
+    "evidence": [
+      {"doc": "incidents/2026-10-24-order-pool.md", "contains": "N+1"},
+      {"doc": "incidents/2026-08-02-inventory-cache.md", "contains": "缓存击穿"}
+    ],
+    "note": "同症状、不同根因。最容易被“连接池”关键词带偏。"
+  }
+]

@@ -1,0 +1,24 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: jdbc:postgresql://pg-prod:5432/orders
+    username: orders_app
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 3000
+      leak-detection-threshold: 20000
+
+orders:
+  batch-fetch: false
+  query-timeout-ms: 3000
+  page-size: 20
+
+logging:
+  level:
+    com.example.order: INFO
+    com.zaxxer.hikari: WARN

@@ -103,10 +103,18 @@
     <table>
       <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
       <tbody>
-        <tr id="term-rag"><td>RAG</td><td>Retrieval-Augmented Generation：先检索外部资料，再把相关资料放进上下文让模型回答。解决“模型不知道你的私有数据”。</td><td>W1 D3</td></tr>
-        <tr id="term-embedding"><td>Embedding</td><td>把文本映射成向量，使语义相近的文本在向量空间里距离更近。用于语义检索、聚类、去重。</td><td>W1 D3</td></tr>
-        <tr id="term-chunking"><td>分块<span class="en">chunking</span></td><td>把长文档切成适合检索与放入上下文的小块。块大小、重叠、按结构切分都会影响召回质量。</td><td>W1 D3</td></tr>
-        <tr id="term-hybrid-search"><td>混合检索<span class="en">hybrid search</span></td><td>同时用关键词检索（BM25）与向量检索，再融合排序。对代码、专有名词、精确匹配尤其重要。</td><td>W1 D3</td></tr>
+        <tr id="term-rag"><td>RAG</td><td>Retrieval-Augmented Generation：先检索外部资料，再把相关资料放进上下文让模型回答。解决“模型不知道你的私有数据”。</td><td>W1 L3</td></tr>
+        <tr id="term-embedding"><td>Embedding</td><td>把文本映射成向量，使语义相近的文本在向量空间里距离更近。用于语义检索、聚类、去重。</td><td>W1 L3</td></tr>
+        <tr id="term-chunking"><td>分块<span class="en">chunking</span></td><td>把长文档切成适合检索与放入上下文的小块。块大小、重叠、按结构切分都会影响召回质量。</td><td>W1 L3</td></tr>
+        <tr id="term-hybrid-search"><td>混合检索<span class="en">hybrid search</span></td><td>同时用关键词检索（BM25）与向量检索，再融合排序。对代码、专有名词、精确匹配尤其重要。</td><td>W1 L3</td></tr>
+        <tr id="term-bm25"><td>BM25</td><td>基于 TF-IDF 的关键词排序函数：罕见词权重高，词频收益会饱和，长文档会被惩罚。精确错误码、类名、配置键的主场。</td><td>W1 L3</td></tr>
+        <tr id="term-dense-retrieval"><td>稠密检索<span class="en">dense retrieval</span></td><td>用 embedding 向量做相似度检索，擅长同义改写与语义匹配；对精确标识符与否定不敏感。</td><td>W1 L3</td></tr>
+        <tr id="term-sparse-retrieval"><td>稀疏检索<span class="en">sparse retrieval</span></td><td>以词项为维度的检索（如 BM25），每个文档只激活少量词项。与 dense retrieval 互补。</td><td>W1 L3</td></tr>
+        <tr id="term-rrf"><td>倒数排名融合<span class="en">RRF</span></td><td>Reciprocal Rank Fusion：按 <code>1/(k+rank)</code> 累加多路排名。只看名次，避免不同检索器分数量纲不可比。</td><td>W1 L3</td></tr>
+        <tr id="term-recall-k"><td>Recall@k</td><td>top-k 结果中命中相关证据的比例。衡量“该找到的有没有找到”，是检索层最重要的下限指标。</td><td>W1 L3</td></tr>
+        <tr id="term-mrr"><td>MRR</td><td>Mean Reciprocal Rank：第一条相关结果排名的倒数，按查询平均。衡量第一条结果靠不靠谱。</td><td>W1 L3</td></tr>
+        <tr id="term-contextual-retrieval"><td>上下文检索<span class="en">contextual retrieval</span></td><td>在 embedding/BM25 之前，为每个 chunk 补一段 50–100 token 的情境说明，避免 chunk 脱离原文后失去指代。</td><td>W1 L3</td></tr>
+        <tr id="term-parent-child"><td>父子检索<span class="en">parent-child / small-to-big</span></td><td>用小子块做精确检索，命中原文档后返回其父段落或相邻块，兼顾召回精度与生成所需上下文。</td><td>W1 L3</td></tr>
         <tr id="term-rerank"><td>重排<span class="en">reranking</span></td><td>先用便宜的方法召回一批候选，再用更贵的模型对候选精排。提升精度，控制成本。</td><td>W1 D4</td></tr>
         <tr id="term-memory"><td>记忆<span class="en">memory</span></td><td>跨轮次保留的信息。短期记忆通常是会话消息；长期记忆是外部存储的笔记、偏好、经验。</td><td>W2 D8</td></tr>
         <tr id="term-compaction"><td>压缩<span class="en">compaction</span></td><td>上下文接近上限时，把历史总结成更短的摘要并重新开始，保留关键决策与未解决问题。</td><td>W2 D8</td></tr>

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG 检索清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.85rem 1rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+  .check-card h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.22rem 0; }
+  .check-grid + h2 { margin-top: 2.4rem; }
+  @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+  .mini-table td:first-child { white-space: nowrap; font-family: var(--mono); font-size: 0.76rem; }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>RAG 检索清单</h1>
+  <p class="subtitle">设计 chunk、选检索器、读评测报告时，逐项过一遍。</p>
+  <div class="meta">
+    <span>首次建立 2026-10-24</span>
+    <span>配套 Lesson 0003</span>
+    <span>设计 · 实现 · 评测</span>
+    <span>可打印</span>
+  </div>
+
+  <p class="lede">
+    检索的质量不是“感觉”，而是一组可以逐项检查的工程决策：
+    语料怎么切、索引怎么建、两路怎么融合、用什么指标证明它没退步。
+    这份清单不解释概念，只把第 3 课的关键判断压成一页。
+  </p>
+
+  <h2 id="before"><span class="num">01</span>动手前：先把问题定义清楚</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>语料</h4>
+      <ul>
+        <li>总量多少文档 / chunk？增长有多快？</li>
+        <li>语言与代码占比？有没有表格、图片、PDF？</li>
+        <li>更新频率？能不能接受小时级延迟？</li>
+        <li>有没有权限分级？检索结果能不能跨租户？</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>查询</h4>
+      <ul>
+        <li>用户是在问事实、问原因，还是要求跨文档综合？</li>
+        <li>有多少精确标识符（错误码、类名、配置键）？</li>
+        <li>有多少口语改写、同义词、跨语言？</li>
+        <li>延迟预算与上下文预算分别是多少？</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>答案</h4>
+      <ul>
+        <li>回答必须引用出处吗？引用到文档还是行号？</li>
+        <li>答错与拒答，哪个代价更高？</li>
+        <li>是否允许“检索不到就说不知道”？</li>
+        <li>哪些失败必须人工接管？</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>评测</h4>
+      <ul>
+        <li>有没有 20–50 条带证据标签的真实查询？</li>
+        <li>有没有按 keyword / semantic / multi-hop 切片？</li>
+        <li>指标是否包含 recall、precision、context cost？</li>
+        <li>评测集进 CI 了吗？文档改名会不会让它腐烂？</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="index"><span class="num">02</span>离线索引：构建期检查</h2>
+
+  <ul class="checklist">
+    <li><label><input type="checkbox"><span><strong>解析</strong>：代码按类/方法切，Markdown 按标题切，配置按顶层键切；不要把所有格式都当纯文本。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>Chunk 可独立理解</strong>：把它单独拿给同事看，他能看懂吗？如果开头是“它”“上述配置”，就需要补上下文。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>标题路径进 chunk</strong>：至少把 <code>doc title &gt; section</code> 作为前缀或 metadata 带进去。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>稳定 ID</strong>：<code>doc_id#heading-slug</code> 或内容哈希；重跑索引后 ID 不能无故变化。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>元数据</strong>：doc_id、heading、start_line、end_line、版本、更新时间；没有行号就无法精确引用。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>Tokenizer</strong>：拆 camelCase / snake_case；中文用 bigram 或分词器；保留整串精确标识符。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>BM25</strong>：建倒排索引；记录 <code>k1</code>、<code>b</code> 与分析器版本。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>Embedding</strong>：锁定模型名与维度；query/document 是否使用不同输入类型？</span></label></li>
+    <li><label><input type="checkbox"><span><strong>版本化</strong>：chunker 参数、embedding 模型、索引构建时间写进索引元数据。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>增量更新</strong>：文档变更时能只重建受影响 chunk，而不是全量重跑。</span></label></li>
+  </ul>
+
+  <h2 id="query"><span class="num">03</span>在线检索：查询期检查</h2>
+
+  <ul class="checklist">
+    <li><label><input type="checkbox"><span><strong>两路召回</strong>：BM25 与向量各自召回 <code>candidate_k=50</code> 左右，再融合。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>RRF</strong>：用排名融合，避免 BM25 与 cosine 分数尺度不可比；<code>k=60</code> 是常用起点。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>top-k</strong>：先用 5–10；多跳 / 跨节查询可能需要更大 k 或 parent-child。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>上下文预算</strong>：记录每次查询返回的字符/token 数；不要只看 recall。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>引用信息</strong>：送给生成模型的每个 chunk 都带 <code>doc_id</code> 与 heading；否则无法生成可信引用。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>过滤与权限</strong>：租户、时间、服务范围在检索前过滤，不要指望模型自己忽略。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>空结果</strong>：没有高分结果时返回“未找到”，不要硬塞 top-1。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>可观测</strong>：记录 query、两路 top-k、融合后 top-k、耗时、embedding 模型版本。</span></label></li>
+  </ul>
+
+  <h2 id="defaults"><span class="num">04</span>默认值与调参起点</h2>
+
+  <table class="mini-table">
+    <thead><tr><th>参数</th><th>起点</th><th>什么时候改</th></tr></thead>
+    <tbody>
+      <tr><td>chunk size</td><td>200–500 tokens（事实）/ 512–1024（推理）</td><td>语义切片太碎，或上下文成本过高</td></tr>
+      <tr><td>chunk overlap</td><td>10–20%</td><td>边界证据频繁丢失；注意重复存储与冗余召回</td></tr>
+      <tr><td>candidate_k</td><td>50</td><td>正确结果总在第 6–10 名，或融合后丢失单路好候选</td></tr>
+      <tr><td>top-k</td><td>5–10</td><td>多跳/跨节查询；同时观察 ctx_chars</td></tr>
+      <tr><td>RRF k</td><td>60</td><td>想让头部排名更尖锐（调小）或更平滑（调大）</td></tr>
+      <tr><td>BM25 k1 / b</td><td>1.5 / 0.75</td><td>词频饱和或长文档偏置明显时小范围试</td></tr>
+      <tr><td>hybrid alpha</td><td>0.5（若用加权）</td><td>精确标识符多则降低 alpha；口语查询多则提高</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="metrics"><span class="num">05</span>指标速查</h2>
+
+  <table>
+    <thead><tr><th>指标</th><th>定义</th><th>适合诊断</th></tr></thead>
+    <tbody>
+      <tr><td>Recall@k</td><td>命中的证据数 / 证据总数，按查询平均</td><td>该找到的有没有找到</td></tr>
+      <tr><td>Full@k</td><td>所有证据都进 top-k 的查询比例</td><td>多证据 / 多跳任务</td></tr>
+      <tr><td>MRR@k</td><td>1 / 第一条命中证据的排名，按查询平均</td><td>第一条结果是否靠谱</td></tr>
+      <tr><td>Precision</td><td>top-k 中命中证据的 chunk 比例</td><td>上下文里有多少噪音</td></tr>
+      <tr><td>Context chars</td><td>top-k chunk 的字符数之和</td><td>token 成本与延迟</td></tr>
+      <tr><td>nDCG@k</td><td>带等级的相关性折损累计增益</td><td>多级相关性排序</td></tr>
+      <tr><td>Context recall / precision</td><td>Ragas 用 LLM 判断参考事实覆盖与噪音</td><td>没有人工证据标签时的替代</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small">
+    黄金集要有“应该拒答”的负例；只测可回答的问题，会把“什么都返回 top-1”的系统误判成高召回。
+  </p>
+
+  <h2 id="failures"><span class="num">06</span>失败归因表</h2>
+
+  <table>
+    <thead><tr><th>你看到的</th><th>先怀疑</th><th>先做什么</th></tr></thead>
+    <tbody>
+      <tr><td>正确文档完全不在 top-k</td><td>分词、embedding 不匹配、索引过期</td><td>用 exact query 测 BM25；检查索引版本与文档是否同步</td></tr>
+      <tr><td>正确文档在，正确段落不在</td><td>chunk 边界、chunk 过大/过小</td><td>看证据是否被切开；试 structure chunker / parent-child</td></tr>
+      <tr><td>正确段落在第 6–10 名</td><td>融合权重、candidate_k 太小</td><td>加大 candidate_k；上 rerank；调 RRF/alpha</td></tr>
+      <tr><td>keyword 切片满分，semantic 很烂</td><td>缺语义通道，或 embedding 太弱</td><td>接 dense；用真实 embedding 重跑；检查 query/document 输入类型</td></tr>
+      <tr><td>所有切片都平庸</td><td>chunk 设计或语料解析有问题</td><td>先人工看 10 个 chunk；修正解析与标题路径</td></tr>
+      <tr><td>评测集总是 100%</td><td>标签泄漏或查询太简单</td><td>加入改写、否定、多跳与负例；用真实工单</td></tr>
+      <tr><td>改了文档后分数突变</td><td>评测标签过期</td><td>把 <code>--validate</code> 放进 CI</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="loop"><span class="num">07</span>20 分钟调参循环</h2>
+
+  <ol>
+    <li><strong>固定评测集</strong>：先跑一次 baseline，记录 recall / full / mrr / precision / ctx_chars。</li>
+    <li><strong>按类型切片</strong>：keyword、semantic、mixed、multi-hop，各看一遍。</li>
+    <li><strong>挑最差的一类</strong>：只改一个变量（chunker、tokenizer、candidate_k、融合权重、embedding）。</li>
+    <li><strong>重跑同一套用例</strong>：记录变化；不要同时改两个变量。</li>
+    <li><strong>看失败轨迹</strong>：是没召回、排太低，还是证据被拆开？</li>
+    <li><strong>保留或回滚</strong>：如果 recall 上升但 ctx_chars 翻倍，判断这笔交易是否值得。</li>
+  </ol>
+
+  <h2 id="snippets"><span class="num">08</span>最小代码片段</h2>
+
+  <h3>BM25 打分</h3>
+  <pre><code>score = 0.0
+for term in query_terms:
+    if term not in doc_tf:
+        continue
+    idf = log(1 + (N - df[term] + 0.5) / (df[term] + 0.5))
+    freq = doc_tf[term]
+    denom = freq + k1 * (1 - b + b * doc_len / avgdl)
+    score += idf * freq * (k1 + 1) / denom</code></pre>
+
+  <h3>RRF 融合</h3>
+  <pre><code>scores = {}
+for ranking in [bm25_ranking, vector_ranking]:
+    for rank, chunk_id in enumerate(ranking, start=1):
+        scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (60 + rank)
+fused = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))</code></pre>
+
+  <h3>Tokenizer 规则</h3>
+  <pre><code>findRecentOrders  -> find / recent / orders / findrecentorders
+db_pool.used      -> db / pool / used / db_pool.used
+数据库连接池        -> 数据 / 据库 / 库连 / 连接 / 接池
+TS-999            -> ts / 999 / ts-999</code></pre>
+
+  <div class="source-card">
+    <div class="label">出处</div>
+    <h3>本清单的依据</h3>
+    <p>
+      Anthropic — <a href="https://www.anthropic.com/news/contextual-retrieval">Contextual Retrieval</a> ·
+      Pinecone — <a href="https://www.pinecone.io/learn/chunking-strategies/">Chunking Strategies</a> ·
+      Weaviate — <a href="https://docs.weaviate.io/weaviate/search/hybrid">Hybrid Search</a> ·
+      Ragas — <a href="https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/">Available Metrics</a> ·
+      Lewis et al. — <a href="https://arxiv.org/abs/2005.11401">RAG</a>
+    </p>
+  </div>
+
+  <nav class="footer-nav">
+    <a href="../lessons/0003-rag-retrieval.html">← 第 3 课：RAG 检索</a>
+    <a href="course-roadmap.html">课程路线图</a>
+    <a class="next" href="glossary.html">术语表 →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>
