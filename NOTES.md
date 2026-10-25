@@ -34,12 +34,16 @@
 - 2026-10-23：Lesson 0001《Agent 循环》交付（含 `labs/0001-mini-agent`）。
 - 2026-10-24：Lesson 0002《工具设计（ACI）》交付（含 `labs/0002-tool-design` 的 baseline/refactored 对照评测）。
 - 2026-10-24：Lesson 0003《RAG I：检索，才是上限》交付（含 `labs/0003-rag-retrieval`：14 篇语料、20 例评测、BM25 / lexical-vector / hybrid，29 个离线测试）。
-- 尚未获得 lab 1 / lab 2 的完成证据；Lesson 0003 开头已放 90 秒回忆，若答不上来先补第 1/2 课。
+- 2026-10-25：Lesson 0004《RAG II：让答案可被核查》交付（含 `labs/0004-rerank-citations`：15→5 重排、引用协议、11 例答案级评测、28 个离线测试）。
+- 尚未获得 lab 1–4 的完成证据；Lesson 0003/0004 开头均有 90 秒回忆，若答不上来先补前一课。
 - 第 3 课的核心观察：离线 `vector(lexical)` 只是词面向量，不能证明语义检索的收益；真实结论要等用户配置 embedding 后跑 dense/hybrid。
+- 第 4 课的核心观察：`fixtures` 只验证 checker，不代表模型能力；真实答案级结论必须跑 `--backend llm`。A09 是 quote containment 的盲区，需要 NLI / LLM judge / 人工审计。
+- 已修复 `reference/course-roadmap.html` 中第 1、2 课（D5/D6）的缺失链接，并补上第 4 课入口。
 
 ## 待确认
 
 - 模型供应商与可用模型（DeepSeek / Qwen / GLM / OpenAI / 本地 Ollama）。
+- **Chat 模型**：第 4 课 `--backend llm` 需要 `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`；没有时只能跑 fixtures / extractive。
 - **Embedding 供应商**：是否有支持 `/v1/embeddings` 的 OpenAI-compatible 端点？若没有，第 3 课 lab 的 dense 部分只能跳过。
 - RepoMedic 是否作为最终项目；若换，优先选你熟悉且能拿到真实数据的领域。
 - 是否希望每周固定一次「口头答辩 / 讲解」来检验 storage strength。

@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 课 · RAG II：让答案可被核查</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 第 1 周 · 第 4 课</div>
+  <h1>让答案可被核查</h1>
+  <p class="subtitle">检索到了只是开始；重排、引用与失败归因，才让答案可信。</p>
+  <div class="meta">
+    <span>Lesson 0004</span>
+    <span>约 85 分钟</span>
+    <span>阅读 30′ · 测验 5′ · Lab 50′</span>
+    <span>无需 API key 可完成核心 Lab</span>
+  </div>
+
+  <p class="lede">
+    RepoMedic 说“根因是 N+1”还不够。它必须指出证据来自哪份复盘、哪段代码，
+    并在证据不足时说“不确定”。这一课做 RAG 的后半段：重排、引用，
+    以及“检索到了但答案仍然不可信”的失败模式。
+  </p>
+
+  <details class="recall">
+    <summary>90 秒回忆：先别往下看，回答第 3 课的三件事</summary>
+    <ol>
+      <li><code>Recall@k</code> 与 <code>Context chars</code> 分别回答什么问题？</li>
+      <li>RRF 为什么用排名而不是原始分数融合？</li>
+      <li>为什么 naive chunker 的 recall 更高，却不一定是更好的检索？</li>
+    </ol>
+    <p><strong>对答案：</strong>该找到的有没有找到 / 上下文成本；两路分数量纲不可比；它靠更大的 chunk 多塞文本，成本更高、精度没有提升。</p>
+    <p class="small">有一题答不上来？先回 <a href="0003-rag-retrieval.html">第 3 课</a> 补一眼，再回来。</p>
+  </details>
+
+  <div class="toc no-print">
+    <div class="toc-title">本课地图</div>
+    <ol>
+      <li><a href="#failures">先分清三种失败</a></li>
+      <li><a href="#rerank">Rerank：宽召回，精排序</a></li>
+      <li><a href="#citations">引用：让每个结论有出处</a></li>
+      <li><a href="#verify">引用校验：引用 ≠ 支持</a></li>
+      <li><a href="#seven">七个失败点</a></li>
+      <li><a href="#eval">答案级评测</a></li>
+      <li><a href="#quiz">检验一下</a></li>
+      <li><a href="#lab">Lab：加重排与引用</a></li>
+      <li><a href="#java">和 Java 后端对照</a></li>
+    </ol>
+  </div>
+
+  <div class="callout win">
+    <span class="label">本课结束时，你能</span>
+    <p>① 区分 retrieval / rerank / generation 三类失败；② 设计带 quote 的引用协议并做确定性校验；
+    ③ 用 11 例答案级评测定位 citation 失败，而不是只看最终答案。</p>
+  </div>
+
+  <h2 id="failures"><span class="num">01</span>先分清三种失败<a class="anchor" href="#failures">¶</a></h2>
+
+  <p>
+    第 3 课把“找得到”拆成了可测量的指标。但一个 RAG 答案要可信，还要穿过三道关：
+  </p>
+
+  <div class="formula">
+    P(可信答案) ≈ P(<strong>retrieve</strong>) × P(<strong>rerank / select</strong>) × P(<strong>generate grounded</strong>)
+  </div>
+
+  <table>
+    <thead><tr><th>失败层</th><th>症状</th><th>该看什么指标</th><th>怎么修</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Retrieval</strong></td><td>正确证据根本没进候选集</td><td>Recall@candidate_k</td><td>改 chunk、tokenizer、混合检索、embedding</td></tr>
+      <tr><td><strong>Rerank / selection</strong></td><td>候选里有，但没进 top-k 或被上下文挤掉</td><td>MRR、nDCG、Precision@k</td><td>重排、调整 k、parent-child、去重</td></tr>
+      <tr><td><strong>Generation / citation</strong></td><td>证据在上下文里，模型仍答错、漏答或乱引</td><td>Correctness、Faithfulness、Citation precision/recall</td><td>引用协议、校验、拒答、更强模型</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    这三层是<strong>乘法关系</strong>。检索 recall 只有 0.6，重排和生成再完美，端到端上限也只有 0.6。
+    反过来，检索完美但模型把 [S2] 的结论安到 [S1] 上，用户看到的仍然是一个不可信的答案。
+  </p>
+
+  <div class="callout warn">
+    <span class="label">错误的引用比“不知道”更糟</span>
+    <p>
+      RepoMedic 的输出会被用于重启、回滚、改配置。一个带错误出处的自信结论，
+      比一句“证据不足，需要人工确认”危险得多。引用不是装饰，它是<strong>审计接口</strong>。
+    </p>
+  </div>
+
+  <p>
+    这一课按这三层依次处理：先重排（第 2 节），再引用与校验（第 3–4 节），
+    最后用七个失败点与答案级评测把整条链路串起来（第 5–6 节）。
+  </p>
+
+  <h2 id="rerank"><span class="num">02</span>Rerank：宽召回，精排序<a class="anchor" href="#rerank">¶</a></h2>
+
+  <p>
+    第一阶段检索是<strong>双塔（bi-encoder）</strong>：query 和 document 分别编码成向量，
+    靠向量距离找候选。它快，因为文档向量可以离线算好；但它必须把文档的所有可能含义
+    压进一个向量，而且编码文档时还不知道 query 是什么。信息损失是结构性的。
+  </p>
+
+  <p>
+    重排是<strong>交叉编码器（cross-encoder）</strong>：把 query 和 document 拼在一起过模型，
+    直接输出相关性分数。它看得见两者的交互，精度更高，但必须在线逐对计算，所以更慢。
+    Pinecone 的总结很直白：<strong>“rerankers are slow, and retrievers are fast.”</strong>
+    <a href="https://www.pinecone.io/learn/series/rag/rerankers/">Rerankers and Two-Stage Retrieval</a>
+  </p>
+
+  <table>
+    <thead><tr><th></th><th>Bi-encoder（第一阶段）</th><th>Cross-encoder（重排）</th></tr></thead>
+    <tbody>
+      <tr><td>输入</td><td>query 与 document 分开编码</td><td>query + document 联合编码</td></tr>
+      <tr><td>预计算</td><td>文档向量可离线建索引</td><td>必须在线逐对打分</td></tr>
+      <tr><td>速度</td><td>快，适合百万级候选</td><td>慢，适合几十到几百个候选</td></tr>
+      <tr><td>精度</td><td>近似，容易丢细节</td><td>更高，能看到词与词的关系</td></tr>
+      <tr><td>典型位置</td><td>召回 top-50 ~ top-200</td><td>精排到 top-5 ~ top-20</td></tr>
+    </tbody>
+  </table>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 760 220" role="img" aria-labelledby="rerank-title rerank-desc">
+      <title id="rerank-title">两阶段检索与重排</title>
+      <desc id="rerank-desc">查询先经过 BM25 与向量召回得到候选集，再由交叉编码器重排，最后取 top-k 进入生成与引用。</desc>
+      <defs>
+        <marker id="arrow-rerank" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--rule-strong)"></path>
+        </marker>
+        <marker id="arrow-rerank-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+        </marker>
+      </defs>
+
+      <rect class="d-node-io" x="20" y="70" width="120" height="62" rx="6"></rect>
+      <text class="d-text" x="80" y="96">查询</text>
+      <text class="d-sub" x="80" y="116">question</text>
+
+      <line class="d-arrow" x1="140" y1="101" x2="180" y2="101" marker-end="url(#arrow-rerank)"></line>
+
+      <rect class="d-node" x="180" y="70" width="180" height="62" rx="6"></rect>
+      <text class="d-text" x="270" y="96">第一阶段召回</text>
+      <text class="d-sub" x="270" y="116">BM25 + vector · top-50</text>
+
+      <line class="d-arrow" x1="360" y1="101" x2="400" y2="101" marker-end="url(#arrow-rerank)"></line>
+
+      <rect class="d-node-accent" x="400" y="70" width="180" height="62" rx="6"></rect>
+      <text class="d-text" x="490" y="96">Cross-encoder 重排</text>
+      <text class="d-sub" x="490" y="116">query + doc → score</text>
+
+      <line class="d-arrow-accent" x1="580" y1="101" x2="620" y2="101" marker-end="url(#arrow-rerank-accent)"></line>
+
+      <rect class="d-node-io" x="620" y="70" width="120" height="62" rx="6"></rect>
+      <text class="d-text" x="680" y="96">top-5 → 引用</text>
+      <text class="d-sub" x="680" y="116">answer + [S#]</text>
+
+      <text class="d-label" x="270" y="160">候选集决定重排上限</text>
+      <path class="d-arrow" d="M270,132 C270,150 270,150 270,160" stroke-dasharray="4 4" marker-end="url(#arrow-rerank)"></path>
+    </svg>
+    <figcaption>第一阶段负责“不漏”，第二阶段负责“排序”。两件事不能互相替代。</figcaption>
+  </figure>
+
+  <p>
+    为什么需要两阶段？Pinecone 指出了一个容易被忽略的事实：
+    <strong>recall 不考虑返回了多少文档</strong>，所以你可以靠“把整个库都返回”把 recall 刷到 1.0。
+    真正要优化的是“用尽量少的上下文，拿到尽量多的相关证据”。重排就是这个交易的执行者。
+  </p>
+
+  <h3>重排能修什么，不能修什么</h3>
+
+  <table>
+    <thead><tr><th>情况</th><th>重排能救吗</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>正确 chunk 在候选集，但排第 8</td><td>能</td><td>交叉编码器可以直接把它提到前面</td></tr>
+      <tr><td>正确 chunk 不在候选集</td><td>不能</td><td>候选集是重排的输入；没有输入就没有输出</td></tr>
+      <tr><td>语料里根本没有答案</td><td>不能</td><td>这是 Missing Content，需要拒答或补数据</td></tr>
+      <tr><td>query 本身有歧义</td><td>有限</td><td>重排只能按给定 query 排序，不能替你澄清意图</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    所以评价重排时，必须同时看两个数：<strong>candidate_k 的 recall ceiling</strong>
+    和 <strong>rerank 后的 recall@top_k</strong>。如果 ceiling 只有 0.6，重排做到 0.6 就到顶了；
+    继续调重排权重没有意义，应该回去修召回。
+  </p>
+
+  <h3>本 lab 的实测</h3>
+
+  <p class="small">第 3 课的 20 个检索用例，BM25 候选集 k=15，重排到 top-5。离线实测，2026-10-25。</p>
+
+  <table>
+    <thead><tr><th>配置</th><th>Recall@5</th><th>Full@5</th><th>MRR@5</th><th>Precision</th><th>Context chars</th></tr></thead>
+    <tbody>
+      <tr><td>first-5（不重排）</td><td>0.625</td><td>0.550</td><td>0.552</td><td>0.250</td><td>1033</td></tr>
+      <tr><td>rerank-5（启发式）</td><td><strong>0.725</strong></td><td>0.700</td><td>0.627</td><td>0.270</td><td>1174</td></tr>
+      <tr><td>ceiling@15</td><td>0.875</td><td>0.850</td><td>0.576</td><td>0.156</td><td>2598</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    重排把 recall@5 从 0.625 提到 0.725，代价是上下文从 1033 字增加到 1174 字。
+    但它离 0.875 的候选集上限还有一段距离——剩下的失败主要是语义召回问题，
+    不是排序问题。这就是为什么第 3 课一直强调：<strong>先修召回，再修排序</strong>。
+  </p>
+
+  <div class="callout note">
+    <span class="label">生产里用什么重排</span>
+    <p>
+      常见选择：Cohere Rerank、Voyage rerank、本地 bge-reranker，或者用 LLM 直接给候选打分。
+      API 重排通常增加 100–200ms 延迟；要准备好超时与降级到第一阶段结果的路径。
+      <a href="https://docs.cohere.com/docs/rerank-overview">Cohere Rerank</a> ·
+      <a href="https://docs.voyageai.com/docs/reranker">Voyage Reranker</a>
+    </p>
+  </div>
+
+  <p>
+    重排之后还有一个容易忽略的问题：<strong>顺序</strong>。即使 top-5 都相关，
+    把最关键的一段放在中间也可能被模型忽略（lost in the middle）。
+    实践上把最强证据放在开头或结尾，并在 prompt 里明确标出“这是关键证据”。
+    <a href="https://arxiv.org/abs/2307.03172">Lost in the Middle</a>
+  </p>
+
+  <h2 id="citations"><span class="num">03</span>引用：让每个结论有出处<a class="anchor" href="#citations">¶</a></h2>
+
+  <p>
+    引用有三个作用：让用户<strong>验证</strong>结论、让工程师<strong>调试</strong>失败、
+    让系统在合规场景里<strong>可审计</strong>。它不是给答案加一行 source 链接，而是改变模型的行为：
+    模型必须先在证据里找到支持，再组织语言。
+  </p>
+
+  <h3>引用粒度</h3>
+
+  <table>
+    <thead><tr><th>粒度</th><th>例子</th><th>优点</th><th>缺点</th></tr></thead>
+    <tbody>
+      <tr><td>文档级</td><td><code>incidents/2026-10-24.md</code></td><td>最容易实现</td><td>用户仍要自己找段落；无法验证具体结论</td></tr>
+      <tr><td>Chunk 级</td><td><code>[S1]</code> → chunk_id + heading</td><td>可定位、可实现</td><td>chunk 内可能有多段，仍不够精确</td></tr>
+      <tr><td>Span 级</td><td>quote + start/end 字符偏移</td><td>可精确高亮、可自动校验</td><td>实现成本最高；模型可能改写 quote</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Anthropic 的 Citations API 走的是结构化路线：把来源文档切成句子，
+    返回 <code>cited_text</code>、<code>document_index</code>，以及按文档类型的位置索引
+    （纯文本是字符区间，PDF 是页码区间，custom content 是块索引）。
+    官方称内置引用比多数自定义实现最多高 15% 的 recall accuracy；
+    <code>cited_text</code> 也不计入输出 token。
+    <a href="https://platform.claude.com/docs/en/build-with-claude/citations">Anthropic Citations</a> ·
+    <a href="https://claude.com/resources/articles/introducing-citations-api">发布说明</a>
+  </p>
+
+  <p>
+    如果你用的不是 Anthropic，或者需要跨供应商，可以用一套<strong>通用引用协议</strong>：
+  </p>
+
+  <pre><code>你是 RepoMedic 的排障助手。只能依据下面提供的来源回答。
+
+要求：
+1. 每个事实性结论后面标注来源编号，例如 [S1]。
+2. 只能引用下面出现过的编号；不要编造来源。
+3. citations 里为每个编号给出支持该结论的原文 quote；quote 必须是来源中的原句。
+4. 来源不足时，answer 写“证据不足：...”并说明缺什么，citations 为空。
+5. 只输出 JSON。
+
+{"answer": "...", "citations": [{"source_id": "S1", "quote": "..."}]}
+
+来源：
+[S1] doc=incidents/2026-10-24-order-pool.md heading=... lines=...
+...</code></pre>
+
+  <p>
+    这条 prompt 的关键不是“请引用”，而是三件事：
+    <strong>来源编号是封闭集合</strong>、<strong>quote 必须是原文</strong>、
+    <strong>允许并鼓励说证据不足</strong>。没有第三条，模型会在证据不足时编一个答案；
+    没有第二条，引用就无法自动校验。
+  </p>
+
+  <div class="callout note">
+    <span class="label">引用改变的是生成行为</span>
+    <p>
+      要求 quote 原文，会把“凭记忆总结”变成“先在来源里定位再复述”。
+      这个约束会降低流畅度，但会显著提高可验证性。对排障、法务、医疗这类场景，
+      这笔交易通常值得。
+    </p>
+  </div>
+
+  <h2 id="verify"><span class="num">04</span>引用校验：引用 ≠ 支持<a class="anchor" href="#verify">¶</a></h2>
+
+  <p>
+    “模型给出了引用”和“引用支持结论”是两件事。校验要分四层，成本从低到高：
+  </p>
+
+  <table>
+    <thead><tr><th>层级</th><th>检查</th><th>成本</th><th>能抓住什么</th></tr></thead>
+    <tbody>
+      <tr><td>1. ID 有效性</td><td>引用的 [S#] 是否在提供的来源里</td><td>极低，纯规则</td><td>编造来源编号</td></tr>
+      <tr><td>2. Quote 包含</td><td>quote 是否是来源中的原句/子串</td><td>低，纯规则</td><td>改写给错、引用错段落</td></tr>
+      <tr><td>3. 结论蕴含</td><td>quote 是否真的推出答案中的 claim</td><td>高，NLI / LLM judge</td><td>引用存在但不支持、过度推断</td></tr>
+      <tr><td>4. 人工审计</td><td>高风险场景抽样复核</td><td>最高</td><td>细微语义偏差、业务判断错误</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Lab 实现了前两层，并对第三层留了边界：<strong>quote containment 是必要条件，不是充分条件</strong>。
+    第 4 层的判断仍然需要人。下面这张表就是 lab 里故意写坏的 5 个输出：
+  </p>
+
+  <table>
+    <thead><tr><th>用例</th><th>写坏的方式</th><th>被哪一层抓住</th></tr></thead>
+    <tbody>
+      <tr><td>A02</td><td>引用 ID 有效，但 quote 不在来源里</td><td>第 2 层：quote_not_found</td></tr>
+      <tr><td>A03</td><td>答案里写了不存在的 [S9]</td><td>第 1 层：invalid_ids</td></tr>
+      <tr><td>A04</td><td>第二句结论没有引用</td><td>Coverage：uncited_claims</td></tr>
+      <tr><td>A06</td><td>多来源问题只引了一个来源</td><td>Citation recall：missing source</td></tr>
+      <tr><td>A09</td><td>引用真实存在，但结论与 quote 相反</td><td>第 2 层抓不住；需要第 3 层</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <span class="label">Quote containment 的盲区</span>
+    <p>
+      A09 的答案是“order-service 使用的是 MySQL”，引用的是架构文档里写着 “PostgreSQL” 的那一段。
+      quote 确实存在，ID 也有效，确定性检查会放行；但结论与证据相反。
+      这类失败只能靠 NLI / LLM judge / 人工审计。不要因为“引用校验通过”就认为答案正确。
+    </p>
+  </div>
+
+  <p>
+    ALCE 基准把引用质量拆成 fluency、correctness、citation quality 三个维度，
+    并用 NLI 判断引用是否支持结论。它的结论很清醒：即使最好的模型，
+    在 ELI5 上也有约 50% 的情况拿不出完整引用支持。
+    <a href="https://arxiv.org/abs/2305.14627">Enabling LLMs to Generate Text with Citations</a>
+  </p>
+
+  <h2 id="seven"><span class="num">05</span>七个失败点<a class="anchor" href="#seven">¶</a></h2>
+
+  <p>
+    Barnett 等人的经验报告把 RAG 的失败点整理成七类。它比“检索/生成”二分更细，
+    因为它把“检索到了但没进上下文”“在上下文里但没被抽取”这些中间状态也单独列了出来。
+    <a href="https://arxiv.org/abs/2401.05856">Seven Failure Points When Engineering a RAG System</a>
+  </p>
+
+  <table>
+    <thead><tr><th>#</th><th>失败点</th><th>RepoMedic 里的例子</th><th>对策</th></tr></thead>
+    <tbody>
+      <tr><td>FP1</td><td>Missing Content</td><td>语料里没有 Spring Boot 版本，系统却编了一个</td><td>拒答、补数据、明确能力边界</td></tr>
+      <tr><td>FP2</td><td>Missed Top Ranked</td><td>正确复盘在候选集，但没进 top-5</td><td>重排、调 k、混合检索</td></tr>
+      <tr><td>FP3</td><td>Not in Context</td><td>召回了 15 个 chunk，组装 prompt 时被截掉</td><td>上下文预算、去重、排序</td></tr>
+      <tr><td>FP4</td><td>Not Extracted</td><td>证据在 context 里，模型被噪音带偏</td><td>更强模型、更明确的引用协议</td></tr>
+      <tr><td>FP5</td><td>Wrong Format</td><td>要求 JSON，模型输出了 Markdown</td><td>结构化输出、解析容错、重试</td></tr>
+      <tr><td>FP6</td><td>Incorrect Specificity</td><td>问“哪个类”，答“某个服务”</td><td>输出契约、事实检查</td></tr>
+      <tr><td>FP7</td><td>Incomplete</td><td>答了根因，漏了需要审批的动作</td><td>检查清单、覆盖度指标</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    论文的两个结论比列表更重要：<strong>RAG 的验证只有在运行中才可行</strong>，
+    以及<strong>鲁棒性是演化出来的，不是一开始设计出来的</strong>。
+    这意味着你需要 trace、评测集和失败分类，而不是指望一套 prompt 解决所有问题。
+  </p>
+
+  <div class="callout note">
+    <span class="label">把失败点映射到你的指标</span>
+    <p>
+      FP1 → abstention accuracy；FP2 → recall / MRR；FP3 → context precision / context chars；
+      FP4–FP7 → answer correctness、faithfulness、citation coverage、format compliance。
+      没有指标，失败点就只是故事。
+    </p>
+  </div>
+
+  <h2 id="eval"><span class="num">06</span>答案级评测<a class="anchor" href="#eval">¶</a></h2>
+
+  <p>
+    第 3 课评的是检索层；这一课要评<strong>答案层</strong>。Lab 用 11 个用例：
+    9 个可回答（含单源、多源、反例、配置读取），2 个应拒答。
+  </p>
+
+  <table>
+    <thead><tr><th>指标</th><th>回答的问题</th><th>怎么算</th></tr></thead>
+    <tbody>
+      <tr><td>Answer accuracy</td><td>期望事实是否出现、禁止表述是否没出现</td><td>可回答用例中事实全中的比例</td></tr>
+      <tr><td>Grounded rate</td><td>引用 ID 有效、quote 可验证、结论有引用</td><td>通过引用校验的可回答用例比例</td></tr>
+      <tr><td>Citation precision</td><td>给出的 citation 里有多少真的可验证</td><td>有效 citation / 全部 citation</td></tr>
+      <tr><td>Citation recall</td><td>该引的来源有没有引全</td><td>有效引用的期望来源 / 期望来源总数</td></tr>
+      <tr><td>Abstention accuracy</td><td>该拒答时有没有拒答</td><td>不可回答用例中正确拒答的比例</td></tr>
+      <tr><td>Pass rate</td><td>事实 + 引用 + 来源召回是否全过</td><td>全部用例中 pass 的比例</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small">
+    Lab 的 <code>--backend fixtures</code> 使用脚本化输出，其中 5 个故意写坏。
+    这是 checker 的演示，不是模型评测；真实结论要跑 <code>--backend llm</code>。
+  </p>
+
+  <table>
+    <thead><tr><th>指标</th><th>本 lab 的 fixture 结果</th></tr></thead>
+    <tbody>
+      <tr><td>Answer accuracy</td><td>0.889（8/9）</td></tr>
+      <tr><td>Grounded rate</td><td>0.667（6/9）</td></tr>
+      <tr><td>Citation precision</td><td>0.889</td></tr>
+      <tr><td>Citation recall</td><td>0.833</td></tr>
+      <tr><td>Abstention accuracy</td><td>1.000（2/2）</td></tr>
+      <tr><td>Pass rate</td><td>0.545（6/11）</td></tr>
+      <tr><td>Avg context chars</td><td>1407</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    这组数字故意不是满分。它演示的是：答案事实对了（0.889），不代表引用可信（0.667）；
+    引用 precision 高（0.889），也不代表来源引全了（0.833）。
+    如果只盯最终答案，你会漏掉这几类引用问题。
+  </p>
+
+  <h3>评测栈：确定性 → LLM judge → 人工</h3>
+
+  <ol>
+    <li><strong>确定性检查</strong>：ID 是否存在、quote 是否包含、每个 claim 是否有引用、期望来源是否出现。便宜、可复现、适合 CI。</li>
+    <li><strong>LLM judge</strong>：判断 claim 是否被 quote 蕴含、答案是否覆盖期望事实、是否过度推断。需要校准，避免自我偏好。</li>
+    <li><strong>人工审计</strong>：高风险场景抽样；把分歧样本写回评测集。</li>
+  </ol>
+
+  <p>
+    Ragas 的 Faithfulness 提供了一个可操作的起点：把答案拆成 claims，
+    逐条检查是否能由 retrieved context 推出，分数 = 被支持的 claim 数 / 总 claim 数。
+    <a href="https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/faithfulness/">Ragas — Faithfulness</a>
+  </p>
+
+  <div class="callout warn">
+    <span class="label">平均分是谎言，答案层也一样</span>
+    <p>
+      按“可回答 / 不可回答 / 单源 / 多源”切片。多源问题的 citation recall 往往最先崩；
+      不可回答问题的 abstention 往往被平均分掩盖。先修最差的那一片。
+    </p>
+  </div>
+
+  <h2 id="quiz"><span class="num">07</span>检验一下<a class="anchor" href="#quiz">¶</a></h2>
+
+  <p class="small">先自己想，再点选项。答错会给出解释。</p>
+
+  <div class="quiz" data-quiz>
+    <div class="quiz-q" data-answer="b" data-explain="重排只能在候选集内重新排序。正确证据不在候选集，属于 retrieval failure；重排无法凭空造出它。">
+      <p class="quiz-prompt">Rerank 能修复下面哪一种失败？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>正确证据没进第一阶段的候选集</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>正确证据在候选集但排名太靠后</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>语料里没有答案系统却仍然作答</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>模型忽略了你要求的输出格式</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="a" data-explain="Cross-encoder 把 query 和 document 拼在一起过模型，能看到两者的交互；bi-encoder 分开编码，必须把文档含义压进一个向量。">
+      <p class="quiz-prompt">Cross-encoder 通常比 bi-encoder 更准，主要因为什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>它把查询和文档放在一起编码</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>它的向量维度通常比别的模型大</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>它不需要任何训练数据就能使用</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>它可以在离线阶段预先算好向量</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="d" data-explain="[S3] 存在，说明引用有效性通过；但来源并不支持这句话，属于 citation support 失败。ID 校验不够，需要 quote containment 或蕴含判断。">
+      <p class="quiz-prompt">模型引用了存在的 [S3]，但 S3 不支持这句话。这属于？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>检索失败，因为证据没有被召回</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>重排失败，因为排序不够准确</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>格式错误，因为引用写法不规范</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>引用有效，但它不支持这个结论</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="c" data-explain="Quote containment 是最便宜的确定性 support 检查：要求模型引用原句，再检查 quote 是否真的在来源里。ID 校验只能证明来源存在，不能证明支持。">
+      <p class="quiz-prompt">验证“引用是否支持结论”，最便宜的第一步是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>直接让生成模型给自己打分</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>检查引用编号是否存在于上下文</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>要求引用原句并做包含校验</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>把 k 调大直到答案变正确</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="语料里没有答案却硬答，是 Seven Failure Points 里的 FP1 Missing Content。正确行为是拒答或明确说明证据不足。">
+      <p class="quiz-prompt">语料里没有答案，系统却编了一个。对应哪个 failure point？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>Not Extracted</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>Missing Content</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>Wrong Format</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>Incorrect Specificity</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-score" aria-live="polite"></div>
+  </div>
+
+  <h2 id="lab"><span class="num">08</span>Lab：给 RepoMedic 加重排与引用<a class="anchor" href="#lab">¶</a></h2>
+
+  <p>
+    代码在 <a href="../labs/0004-rerank-citations/">labs/0004-rerank-citations/</a>。
+    它复用第 3 课的语料与索引：14 篇文档、43 个 chunk、20 个检索用例，
+    再加上 11 个答案级用例（9 个可回答 + 2 个应拒答）。
+  </p>
+
+  <h3>Step 1 · 离线校验（5 分钟）</h3>
+  <pre><code>cd labs/0004-rerank-citations
+python3 -m unittest -v
+python3 eval.py --validate</code></pre>
+  <p>
+    28 个测试覆盖重排、引用解析、ID/quote/coverage 校验、citation recall 与拒答识别。
+    <code>--validate</code> 检查 11 个用例的期望来源是否真的在语料里。
+  </p>
+
+  <h3>Step 2 · 看重排的收益与天花板（10 分钟）</h3>
+  <pre><code>python3 rerank_eval.py --retriever bm25</code></pre>
+  <p>
+    你会看到 first-5 的 recall 是 0.625，rerank-5 是 0.725，ceiling@15 是 0.875。
+    先回答：剩下的 0.15 差距，是重排不够好，还是候选集没召回？
+    再看失败列表里哪些 missing 是“候选集里根本没有”。
+  </p>
+
+  <h3>Step 3 · 跑引用校验（10 分钟）</h3>
+  <pre><code>python3 eval.py --backend fixtures</code></pre>
+  <p>
+    这是脚本化输出，不是模型评测；其中 5 个是故意写坏的。
+    对照失败列表，把每个失败归到：invalid ID、quote not found、uncited claim、
+    missing source、还是“quote 存在但不支持结论”。
+  </p>
+
+  <h3>Step 4 · 接真实模型（15 分钟，可选）</h3>
+  <pre><code>cp .env.example .env
+# 填写 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL
+
+python3 eval.py --backend llm</code></pre>
+  <p>
+    重点看 grounded rate 与 citation recall 是否比 fixture 低，以及失败样本里
+    模型是在改写 quote、漏引多来源，还是证据不足时硬答。
+  </p>
+
+  <h3>Step 5 · 做一次“引用写坏”的实验（8 分钟）</h3>
+  <p>
+    打开 <code>fixtures.json</code>，把 A01 的 quote 改成来源里不存在的话，跑：
+  </p>
+  <pre><code>python3 eval.py --backend fixtures --case A01</code></pre>
+  <p>
+    观察 <code>quote_not_found</code>。再把 source_id 改成 S9，观察 <code>invalid_ids</code>；
+    最后删掉答案第二句的引用，观察 <code>uncited_claims</code>。
+  </p>
+
+  <h3>Step 6 · 回答三个问题</h3>
+  <ol>
+    <li>如果 candidate_k 从 15 降到 5，重排还能把 recall 提到 0.725 吗？为什么？</li>
+    <li>为什么 A09 的 grounded 检查会通过，但 answer accuracy 会失败？这说明 quote containment 缺了什么？</li>
+    <li>多来源问题（A06/A07）在真实模型下最常见的失败是什么？你会先改 prompt、改检索，还是加 LLM judge？</li>
+  </ol>
+
+  <h3>成功标准</h3>
+  <ul class="checklist" data-persist="lesson4-lab">
+    <li><label><input type="checkbox"><span>28 个测试全绿，<code>eval.py --validate</code> 通过</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 first-5 / rerank-5 / ceiling 三个数字的关系</span></label></li>
+    <li><label><input type="checkbox"><span>能说出 5 个 fixture 失败分别被哪一层抓住</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 A09 为什么是 quote containment 的盲区</span></label></li>
+    <li><label><input type="checkbox"><span>能区分 citation validity、citation support、citation coverage</span></label></li>
+    <li><label><input type="checkbox"><span>（可选）用真实模型跑过 <code>--backend llm</code>，并分析一个失败</span></label></li>
+  </ul>
+
+  <h2 id="java"><span class="num">09</span>和 Java 后端对照<a class="anchor" href="#java">¶</a></h2>
+
+  <p>
+    这一课几乎就是搜索系统与审计系统的工程直觉，换了一个“客户端”。
+  </p>
+
+  <table>
+    <thead><tr><th>RAG 概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>两阶段检索 + rerank</td><td>粗排 + 精排 / 搜索引擎的多阶段查询</td></tr>
+      <tr><td>bi-encoder vs cross-encoder</td><td>倒排召回 vs 精排模型</td></tr>
+      <tr><td>citation ID</td><td>trace ID / 请求 ID / 审计日志编号</td></tr>
+      <tr><td>quote containment</td><td>审计日志与原始事件的字段校验</td></tr>
+      <tr><td>groundedness</td><td>数据血缘 / 可追溯性</td></tr>
+      <tr><td>abstention</td><td>服务降级、返回空结果、拒绝越权请求</td></tr>
+      <tr><td>fixtures</td><td>契约测试 / golden files</td></tr>
+      <tr><td>citation precision / recall</td><td>告警准确率 / 召回率</td></tr>
+      <tr><td>七类 failure points</td><td>故障树 / FMEA</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    最大的认知转变是：<strong>“答案正确”不是一个布尔值，而是一组可分解的检查</strong>。
+    事实、引用、来源覆盖、拒答、格式，各自有独立的失败模式。
+    你要做的不是写一个更长的 prompt，而是把每个检查变成可重复的评测。
+  </p>
+
+  <div class="source-card">
+    <div class="label">本课精读</div>
+    <h3>Anthropic — Citations</h3>
+    <p>
+      读官方文档的 overview 与示例（约 15 分钟），重点看：文档如何被切成句子、
+      <code>cited_text</code> / <code>document_index</code> / 位置索引分别是什么、
+      以及 RAG 场景下“每个 retrieved chunk 作为一个 document”的用法。
+    </p>
+    <p><a href="https://platform.claude.com/docs/en/build-with-claude/citations">platform.claude.com/docs/en/build-with-claude/citations</a></p>
+    <p class="small">
+      选读：<a href="https://www.pinecone.io/learn/series/rag/rerankers/">Pinecone — Rerankers and Two-Stage Retrieval</a> ·
+      <a href="https://arxiv.org/abs/2401.05856">Seven Failure Points</a> ·
+      <a href="https://arxiv.org/abs/2305.14627">ALCE</a>
+    </p>
+  </div>
+
+  <p class="small center no-print">
+    打印版：<a href="../reference/rag-answer-checklist.html">RAG 答案与引用清单</a> ·
+    设计重排、引用协议与答案评测时逐项过一遍。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">卡住了？</span>
+    <p>
+      回到终端问你的老师：“lesson 0004 里 A09 为什么 grounded 通过但 answer 错了？”
+      或者把 <code>reports/answer-llm-heuristic.json</code> 的失败样本贴过来，我们一起归因。
+    </p>
+  </div>
+
+  <p class="small center no-print" style="margin-top:2.2rem;">
+    下一课：状态与记忆——当会话变长、任务跨轮次，Agent 该记住什么、忘掉什么。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="0003-rag-retrieval.html">← 第 3 课：RAG 检索</a>
+    <a href="../reference/course-roadmap.html">课程路线图</a>
+    <a href="../reference/glossary.html">术语表</a>
+    <span class="next disabled">第 5 课：状态与记忆（即将解锁）</span>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

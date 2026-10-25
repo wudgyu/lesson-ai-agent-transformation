@@ -1,0 +1,98 @@
+{
+  "_meta": {
+    "description": "Scripted outputs for the offline answer eval. Several outputs contain deliberate citation failures so the checker can be observed catching them. This is not a model evaluation."
+  },
+  "A01": {
+    "answer": "TS-999 表示下游超时 [{S:docs/error-codes.md}]。",
+    "citations": [
+      {
+        "source_doc": "docs/error-codes.md",
+        "quote": "下游超时。通常由外部网关、支付渠道或 HTTP 客户端超时引起。"
+      }
+    ]
+  },
+  "A02": {
+    "answer": "根因是 N+1 循环查询 [{S:incidents/2026-10-24-order-pool.md}]。",
+    "citations": [
+      {
+        "source_doc": "incidents/2026-10-24-order-pool.md",
+        "quote": "N+1 导致连接池耗尽"
+      }
+    ]
+  },
+  "A03": {
+    "answer": "findRecentOrders 中存在 N+1 循环查询 [S9]。",
+    "citations": [
+      {
+        "source_doc": "code/OrderQueryService.java",
+        "quote": "N+1: 每个订单单独查一次明细"
+      }
+    ]
+  },
+  "A04": {
+    "answer": "回滚需要 on-call 负责人审批 [{S:runbooks/deploy-rollback.md}]。另外还要通知业务负责人。",
+    "citations": [
+      {
+        "source_doc": "runbooks/deploy-rollback.md",
+        "quote": "回滚也是写操作，需要 on-call 负责人审批"
+      }
+    ]
+  },
+  "A05": {
+    "answer": "maximum-pool-size 配置为 50 [{S:config/application-prod.yml}]。",
+    "citations": [
+      {
+        "source_doc": "config/application-prod.yml",
+        "quote": "maximum-pool-size: 50"
+      }
+    ]
+  },
+  "A06": {
+    "answer": "v2.14.1 部署后连接池耗尽，根因是 OrderQueryService.findRecentOrders 的 N+1 [{S:incidents/2026-10-24-order-pool.md}]。",
+    "citations": [
+      {
+        "source_doc": "incidents/2026-10-24-order-pool.md",
+        "quote": "形成 N+1"
+      }
+    ]
+  },
+  "A07": {
+    "answer": "order-service 的根因是 N+1 [{S:incidents/2026-10-24-order-pool.md}]；inventory-service 的根因是缓存击穿 [{S:incidents/2026-08-02-inventory-cache.md}]。",
+    "citations": [
+      {
+        "source_doc": "incidents/2026-10-24-order-pool.md",
+        "quote": "N+1"
+      },
+      {
+        "source_doc": "incidents/2026-08-02-inventory-cache.md",
+        "quote": "缓存击穿"
+      }
+    ]
+  },
+  "A08": {
+    "answer": "不一定，慢查询或连接泄漏也可能导致连接池耗尽 [{S:runbooks/db-pool.md}]。",
+    "citations": [
+      {
+        "source_doc": "runbooks/db-pool.md",
+        "quote": "如果慢查询还在，连接池会再次耗尽"
+      }
+    ]
+  },
+  "A09": {
+    "answer": "order-service 使用的是 MySQL [{S:docs/architecture.md}]。",
+    "citations": [
+      {
+        "source_doc": "docs/architecture.md",
+        "quote": "PostgreSQL"
+      }
+    ]
+  },
+  "U01": {
+    "answer": "证据不足：来源中没有 Kubernetes 内核参数。",
+    "citations": []
+  },
+  "U02": {
+    "answer": "证据不足：来源中没有 Spring Boot 版本。",
+    "citations": []
+  }
+}

@@ -1,12 +1,28 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-10-24。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-10-25。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
 
 ### 检索与 RAG
 
+- [Anthropic — Citations](https://platform.claude.com/docs/en/build-with-claude/citations)
+  **第 4 课精读**。结构化引用：文档切句、`cited_text`、`document_index`、字符/页码/块索引；RAG 场景下每个 retrieved chunk 作为一个 document。
+- [Anthropic — Introducing Citations](https://claude.com/resources/articles/introducing-citations-api)
+  发布说明：内置引用比多数自定义实现最多高 15% recall accuracy；`cited_text` 不计输出 token。
+- [Pinecone — Rerankers and Two-Stage Retrieval](https://www.pinecone.io/learn/series/rag/rerankers/)
+  bi-encoder vs cross-encoder 的清晰解释；为什么 recall 可以靠“返回全部”刷高；两阶段系统的工程取舍。
+- [Cohere — Rerank](https://docs.cohere.com/docs/rerank-overview)
+  生产级 cross-encoder API：query + documents → relevance score；常召回 50–200，重排到 top 5–20。
+- [Voyage — Reranker](https://docs.voyageai.com/docs/reranker)
+  另一种 rerank API；与 Voyage embedding 的 query/document 类型配合使用。
+- [Gao et al. — Enabling LLMs to Generate Text with Citations (ALCE, arXiv:2305.14627)](https://arxiv.org/abs/2305.14627)
+  引用质量评测基准：fluency / correctness / citation quality；citation recall/precision 用 NLI 判断。
+- [Barnett et al. — Seven Failure Points When Engineering a RAG System (arXiv:2401.05856)](https://arxiv.org/abs/2401.05856)
+  RAG 的 7 类失败点：missing content、missed top ranked、not in context、not extracted、wrong format、incorrect specificity、incomplete。
+- [Ragas — Faithfulness](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/faithfulness/)
+  claim 级有据性：被 retrieved context 支持的 claim / 总 claim。答案级评测的起点。
 - [Anthropic — Contextual Retrieval](https://www.anthropic.com/news/contextual-retrieval)
   **第 3 课精读**。给 chunk 补 50–100 token 情境说明，再做 contextual embeddings + contextual BM25；报告 top-20 失败率 −35% / −49% / −67%（加 rerank）。含成本与 prompt caching 细节。
 - [Pinecone — Chunking Strategies](https://www.pinecone.io/learn/chunking-strategies/)

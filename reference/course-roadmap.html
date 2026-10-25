@@ -220,9 +220,9 @@
         <tr><td>D1</td><td>LLM 工程师心智模型：token、context、采样、结构化输出</td><td>讲 + lab</td><td>带流式输出的 LLM client</td></tr>
         <tr><td>D2</td><td>上下文工程：system prompt、few-shot、输出契约</td><td>讲 + lab</td><td>工单分类器 + 20 例评测</td></tr>
         <tr><td>D3</td><td><a href="../lessons/0003-rag-retrieval.html">RAG I：embedding、chunking、混合检索</a></td><td>讲 + lab</td><td>召回率报告</td></tr>
-        <tr><td>D4</td><td>RAG II：重排、引用、失败模式</td><td>讲 + lab</td><td>带引用的 RAG</td></tr>
-        <tr><td>D5</td><td>Agent 第一性原理：ReAct、工具调用、停止条件</td><td>讲 + 手写</td><td>150 行 ReAct Agent</td></tr>
-        <tr><td>D6</td><td>工具设计 ACI：schema、错误、幂等、权限</td><td>讲 + 重构</td><td>带错误恢复的工具集</td></tr>
+        <tr><td>D4</td><td><a href="../lessons/0004-rerank-citations.html">RAG II：重排、引用、失败模式</a></td><td>讲 + lab</td><td>带引用的 RAG</td></tr>
+        <tr><td>D5</td><td><a href="../lessons/0001-agent-loop.html">Agent 第一性原理：ReAct、工具调用、停止条件</a></td><td>讲 + 手写</td><td>150 行 ReAct Agent</td></tr>
+        <tr><td>D6</td><td><a href="../lessons/0002-tool-design.html">工具设计 ACI：schema、错误、幂等、权限</a></td><td>讲 + 重构</td><td>带错误恢复的工具集</td></tr>
         <tr><td>D7</td><td>周项目：mini-agent + 评测 + 复盘</td><td>做 + 讲</td><td>可运行的 agent + 评测报告</td></tr>
       </tbody>
     </table>
@@ -233,9 +233,10 @@
       <li>不依赖框架写出带工具调用、错误恢复、最大步数保护的循环。</li>
       <li>为一个 Agent 设计 3–5 个工具，并写出可自动回归的评测集。</li>
       <li>为私有语料设计 chunk 与 hybrid 检索，用 Recall@k 与上下文成本证明它有效。</li>
+      <li>为 RAG 答案建立重排、引用协议与答案级评测，区分检索 / 重排 / 生成失败。</li>
     </ul>
 
-    <div class="deliverable"><strong>交付物：</strong>mini-agent 仓库（3 个工具 + trace + 10 例评测）+ RAG 检索评测报告（20 例）。</div>
+    <div class="deliverable"><strong>交付物：</strong>mini-agent 仓库（3 个工具 + trace + 10 例评测）+ RAG 检索评测报告（20 例）+ 带引用的答案评测（11 例）。</div>
   </section>
 
   <section class="week-card">
@@ -442,17 +443,23 @@
     &nbsp;·&nbsp;
     <a href="../lessons/0003-rag-retrieval.html"><strong>→ 第 3 课：RAG 检索</strong></a>
     &nbsp;·&nbsp;
+    <a href="../lessons/0004-rerank-citations.html"><strong>→ 第 4 课：RAG II</strong></a>
+    &nbsp;·&nbsp;
     <a href="glossary.html">术语表</a>
     &nbsp;·&nbsp;
     <a href="tool-design-checklist.html">工具设计清单</a>
     &nbsp;·&nbsp;
     <a href="rag-retrieval-checklist.html">RAG 检索清单</a>
     &nbsp;·&nbsp;
+    <a href="rag-answer-checklist.html">RAG 答案与引用清单</a>
+    &nbsp;·&nbsp;
     <a href="../labs/0001-mini-agent/">Lab 1</a>
     &nbsp;·&nbsp;
     <a href="../labs/0002-tool-design/">Lab 2</a>
     &nbsp;·&nbsp;
     <a href="../labs/0003-rag-retrieval/">Lab 3</a>
+    &nbsp;·&nbsp;
+    <a href="../labs/0004-rerank-citations/">Lab 4</a>
   </p>
 
   <div class="source-card">
@@ -469,7 +476,7 @@
   <nav class="footer-nav">
     <a href="../MISSION.md">← 任务说明</a>
     <a href="glossary.html">术语表</a>
-    <a class="next" href="../lessons/0003-rag-retrieval.html">第 3 课：RAG 检索 →</a>
+    <a class="next" href="../lessons/0004-rerank-citations.html">第 4 课：RAG II →</a>
   </nav>
 
 </main>

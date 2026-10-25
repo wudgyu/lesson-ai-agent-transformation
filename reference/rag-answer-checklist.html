@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG 答案与引用清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.85rem 1rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+  .check-card h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.22rem 0; }
+  .check-grid + h2 { margin-top: 2.4rem; }
+  @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+  .mini-table td:first-child { white-space: nowrap; font-family: var(--mono); font-size: 0.76rem; }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>RAG 答案与引用清单</h1>
+  <p class="subtitle">检索到了只是开始；让答案可核查，才是终点。</p>
+  <div class="meta">
+    <span>首次建立 2026-10-25</span>
+    <span>配套 Lesson 0004</span>
+    <span>重排 · 引用 · 失败归因</span>
+    <span>可打印</span>
+  </div>
+
+  <p class="lede">
+    这份清单把 RAG 的后半段压成一页：两阶段检索、引用协议、引用校验阶梯、
+    七类失败点，以及答案级评测的最小指标。设计或排错时逐项过一遍。
+  </p>
+
+  <h2 id="retrieval"><span class="num">01</span>两阶段检索：先看上限，再调排序</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>第一阶段（召回）</h4>
+      <ul>
+        <li>candidate_k 是 15、50 还是 200？延迟预算允许多大？</li>
+        <li>混合检索是否覆盖了精确标识符与语义改写？</li>
+        <li>candidate_k 的 recall ceiling 是多少？</li>
+        <li>有没有测过“正确证据在候选集但排第 8”的比例？</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>第二阶段（重排）</h4>
+      <ul>
+        <li>用 cross-encoder API、本地模型，还是 LLM 打分？</li>
+        <li>重排前后 Recall@k、MRR、nDCG、context chars 各变了多少？</li>
+        <li>重排超时/失败时，是否降级到第一阶段结果？</li>
+        <li>重排后的 top-k 顺序是否把最强证据放在开头/结尾？</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>上下文组装</h4>
+      <ul>
+        <li>top-k 是否去重？同一文档的多个 chunk 是否挤占预算？</li>
+        <li>是否带上 doc_id、heading、行号、版本？</li>
+        <li>是否把最强证据放在中间？小心 lost in the middle。</li>
+        <li>是否记录每次查询的 context chars/token 成本？</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>不要做的事</h4>
+      <ul>
+        <li>用重排去修“候选集没召回”——修不了。</li>
+        <li>只看 recall，不看 context cost 与 precision。</li>
+        <li>把 candidate_k 调到 200 却不看延迟。</li>
+        <li>用平均分掩盖 semantic / multi-hop 切片的失败。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="protocol"><span class="num">02</span>引用协议：让引用可校验</h2>
+
+  <ul class="checklist">
+    <li><label><input type="checkbox"><span><strong>封闭来源集合</strong>：每个来源有稳定 ID（<code>[S1]</code>…），并带 doc_id、heading、行号。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>只允许引用给定来源</strong>：prompt 明确“不要编造来源编号”，并在校验层拒绝未知 ID。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>每个事实性结论都有引用</strong>：不是整段一个引用，而是每个 claim 都能定位。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>quote 用原文</strong>：要求引用来源中的原句；改写会让自动校验失效。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>拒答出口</strong>：来源不足时输出“证据不足：…”，而不是硬答。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>结构化输出</strong>：<code>{"answer": "...", "citations": [{"source_id": "S1", "quote": "..."}]}</code>。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>解析容错</strong>：允许 JSON 代码块、前后有解释文字；解析失败时标记而不是崩溃。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>引用不可用时降级</strong>：如果模型无法给出 quote，返回“证据不足”或要求重试。</span></label></li>
+  </ul>
+
+  <h2 id="verify"><span class="num">03</span>引用校验阶梯</h2>
+
+  <table>
+    <thead><tr><th>层级</th><th>检查</th><th>成本</th><th>抓什么</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>ID 是否存在</td><td>极低</td><td>编造来源、引用未提供文档</td></tr>
+      <tr><td>2</td><td>quote 是否在来源文本中</td><td>低</td><td>改写、引用错段、幻觉 quote</td></tr>
+      <tr><td>3</td><td>claim 是否被 quote 蕴含</td><td>高</td><td>引用存在但不支持、过度推断、矛盾</td></tr>
+      <tr><td>4</td><td>人工抽样审计</td><td>最高</td><td>业务判断错误、细微语义偏差</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small">
+    第 1–2 层必须自动化并进 CI；第 3 层用 NLI / LLM judge，需人工校准；
+    第 4 层按风险抽样，不要用“模型自评”替代。
+  </p>
+
+  <div class="callout warn">
+    <span class="label">Quote containment 的盲区</span>
+    <p>
+      引用真实存在、quote 也在来源里，但结论与 quote 相反——第 2 层会放行。
+      这类失败只能靠第 3 层。不要把“引用校验通过”等同于“答案正确”。
+    </p>
+  </div>
+
+  <h2 id="failures"><span class="num">04</span>七类失败点速查</h2>
+
+  <table>
+    <thead><tr><th>#</th><th>失败点</th><th>典型症状</th><th>先查什么</th></tr></thead>
+    <tbody>
+      <tr><td>FP1</td><td>Missing Content</td><td>语料没有答案，系统硬答</td><td>abstention accuracy；补数据</td></tr>
+      <tr><td>FP2</td><td>Missed Top Ranked</td><td>答案在候选集但不在 top-k</td><td>recall@k、MRR、rerank</td></tr>
+      <tr><td>FP3</td><td>Not in Context</td><td>召回了但被截断/去重掉</td><td>context chars、context precision</td></tr>
+      <tr><td>FP4</td><td>Not Extracted</td><td>证据在上下文，模型没抽出来</td><td>faithfulness、失败轨迹</td></tr>
+      <tr><td>FP5</td><td>Wrong Format</td><td>JSON/Markdown 格式不符</td><td>格式合规率、解析失败率</td></tr>
+      <tr><td>FP6</td><td>Incorrect Specificity</td><td>答案太泛或太窄</td><td>rubric、人工抽样</td></tr>
+      <tr><td>FP7</td><td>Incomplete</td><td>答了一部分，漏了关键步骤</td><td>checklist coverage</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="metrics"><span class="num">05</span>答案级指标</h2>
+
+  <table>
+    <thead><tr><th>指标</th><th>定义</th><th>抓什么失败</th></tr></thead>
+    <tbody>
+      <tr><td>Answer accuracy</td><td>期望事实出现、禁止表述不出现</td><td>事实错误、过度推断</td></tr>
+      <tr><td>Grounded rate</td><td>ID 有效 + quote 可验证 + claim 有引用</td><td>引用伪造 / 缺失 / 不支持</td></tr>
+      <tr><td>Citation precision</td><td>有效 citation / 全部 citation</td><td>乱引、引用错段</td></tr>
+      <tr><td>Citation recall</td><td>有效引用的期望来源 / 期望来源总数</td><td>多来源漏引</td></tr>
+      <tr><td>Faithfulness</td><td>被 context 支持的 claim / 总 claim</td><td>上下文里没有的结论</td></tr>
+      <tr><td>Abstention accuracy</td><td>不可回答用例中正确拒答比例</td><td>FP1 硬答</td></tr>
+      <tr><td>Pass rate</td><td>事实 + 引用 + 来源召回全过</td><td>端到端可靠性</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="loop"><span class="num">06</span>20 分钟排错循环</h2>
+
+  <ol>
+    <li><strong>先分层</strong>：正确证据没进候选集（retrieval）？进了但没进 top-k（rerank）？进了但答错/乱引（generation/citation）？</li>
+    <li><strong>看 ceiling</strong>：candidate_k 的 recall ceiling 是多少？重排后的 recall 是否已经接近它？</li>
+    <li><strong>看引用</strong>：invalid ID、quote not found、uncited claim、missing source、unsupported claim，分别计数。</li>
+    <li><strong>只改一个变量</strong>：candidate_k、reranker、prompt、模型、chunking，不要同时动。</li>
+    <li><strong>重跑同一套用例</strong>：记录 recall、MRR、context chars、grounded、citation precision/recall、abstention。</li>
+    <li><strong>保留或回滚</strong>：如果 recall 上升但 citation precision 下降，判断这笔交易是否值得。</li>
+  </ol>
+
+  <h2 id="snippets"><span class="num">07</span>最小代码片段</h2>
+
+  <h3>两阶段接口</h3>
+  <pre><code>candidates = retriever.search(query, candidate_k=15)
+reranked = rerank(query, candidates, top_n=5)      # cross-encoder / heuristic
+sources = build_sources(reranked)                   # [S1] doc_id + heading + lines
+answer = generate(query, sources)                   # JSON with citations
+check = check_citations(answer, sources)            # IDs / quotes / coverage</code></pre>
+
+  <h3>引用 JSON</h3>
+  <pre><code>{
+  "answer": "根因是 N+1 循环查询 [S1]。",
+  "citations": [
+    {"source_id": "S1", "quote": "形成 N+1"}
+  ]
+}</code></pre>
+
+  <h3>校验三件事</h3>
+  <pre><code>invalid_ids      = cited_ids - source_ids
+quote_not_found  = quote not in source.text
+uncited_claims   = claims without a citation (or a covering quote)</code></pre>
+
+  <div class="source-card">
+    <div class="label">出处</div>
+    <h3>本清单的依据</h3>
+    <p>
+      Anthropic — <a href="https://platform.claude.com/docs/en/build-with-claude/citations">Citations</a> ·
+      Pinecone — <a href="https://www.pinecone.io/learn/series/rag/rerankers/">Rerankers and Two-Stage Retrieval</a> ·
+      Barnett et al. — <a href="https://arxiv.org/abs/2401.05856">Seven Failure Points</a> ·
+      Gao et al. — <a href="https://arxiv.org/abs/2305.14627">ALCE</a> ·
+      Ragas — <a href="https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/faithfulness/">Faithfulness</a>
+    </p>
+  </div>
+
+  <nav class="footer-nav">
+    <a href="../lessons/0004-rerank-citations.html">← 第 4 课：重排与引用</a>
+    <a href="course-roadmap.html">课程路线图</a>
+    <a class="next" href="glossary.html">术语表 →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

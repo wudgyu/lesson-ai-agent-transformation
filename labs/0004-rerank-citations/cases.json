@@ -1,0 +1,107 @@
+[
+  {
+    "id": "A01",
+    "query": "TS-999 是什么错误？",
+    "answerable": true,
+    "expected_facts": ["下游超时"],
+    "expected_sources": ["docs/error-codes.md"],
+    "must_not_include": [],
+    "note": "单源精确事实。检查答案事实 + 引用来源。"
+  },
+  {
+    "id": "A02",
+    "query": "order-service 连接池耗尽的根因是什么？",
+    "answerable": true,
+    "expected_facts": ["N+1"],
+    "expected_sources": ["incidents/2026-10-24-order-pool.md"],
+    "must_not_include": [],
+    "note": "事故复盘里的根因。"
+  },
+  {
+    "id": "A03",
+    "query": "findRecentOrders 方法里有什么问题？",
+    "answerable": true,
+    "expected_facts": ["N+1"],
+    "expected_sources": ["code/OrderQueryService.java"],
+    "must_not_include": [],
+    "note": "代码检索：答案与引用都应在代码 chunk。"
+  },
+  {
+    "id": "A04",
+    "query": "回滚 order-service 需要谁批准？",
+    "answerable": true,
+    "expected_facts": ["on-call 负责人"],
+    "expected_sources": ["runbooks/deploy-rollback.md"],
+    "must_not_include": [],
+    "note": "流程类问答，答案藏在“注意”段。"
+  },
+  {
+    "id": "A05",
+    "query": "maximum-pool-size 配成了多少？",
+    "answerable": true,
+    "expected_facts": ["50"],
+    "expected_sources": ["config/application-prod.yml"],
+    "must_not_include": [],
+    "note": "配置值。数字必须能在引用来源中找到。"
+  },
+  {
+    "id": "A06",
+    "query": "v2.14.1 部署后出现了什么，和哪个类有关？",
+    "answerable": true,
+    "expected_facts": ["N+1", "findRecentOrders"],
+    "expected_sources": [
+      "incidents/2026-10-24-order-pool.md",
+      "code/OrderQueryService.java"
+    ],
+    "must_not_include": [],
+    "note": "跨文档：事故复盘 + 代码，需要两个引用。"
+  },
+  {
+    "id": "A07",
+    "query": "order-service 和 inventory-service 的连接池打满，根因分别是什么？",
+    "answerable": true,
+    "expected_facts": ["N+1", "缓存击穿"],
+    "expected_sources": [
+      "incidents/2026-10-24-order-pool.md",
+      "incidents/2026-08-02-inventory-cache.md"
+    ],
+    "must_not_include": [],
+    "note": "同症状不同根因；最容易被“连接池”关键词带偏。"
+  },
+  {
+    "id": "A08",
+    "query": "连接池耗尽一定是 N+1 引起的吗？",
+    "answerable": true,
+    "expected_facts": ["不一定"],
+    "expected_sources": ["runbooks/db-pool.md"],
+    "must_not_include": ["一定是 N+1"],
+    "note": "反例：答案必须限定，不能把“可能”说成“必然”。"
+  },
+  {
+    "id": "A09",
+    "query": "order-service 的数据库是 MySQL 吗？",
+    "answerable": true,
+    "expected_facts": ["PostgreSQL"],
+    "expected_sources": ["docs/architecture.md"],
+    "must_not_include": [],
+    "note": "需要从 JDBC URL 读出数据库类型。"
+  },
+  {
+    "id": "U01",
+    "query": "如何修改 Kubernetes 节点内核参数？",
+    "answerable": false,
+    "expected_facts": [],
+    "expected_sources": [],
+    "must_not_include": [],
+    "note": "语料里没有 Kubernetes 内核参数，正确行为是拒答。"
+  },
+  {
+    "id": "U02",
+    "query": "Spring Boot 的版本是多少？",
+    "answerable": false,
+    "expected_facts": [],
+    "expected_sources": [],
+    "must_not_include": [],
+    "note": "语料里没有 Spring Boot 版本，正确行为是拒答。"
+  }
+]
