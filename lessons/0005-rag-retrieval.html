@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 课 · RAG I：检索，才是上限</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 第 1 周 · 第 5 课</div>
+  <h1>检索，才是 RAG 的上限</h1>
+  <p class="subtitle">模型答不对，往往是因为你根本没把对的材料递给它。</p>
+  <div class="meta">
+    <span>Lesson 0005</span>
+    <span>约 75 分钟</span>
+    <span>阅读 25′ · 测验 5′ · Lab 45′</span>
+    <span>无需 API key 可完成核心 Lab</span>
+  </div>
+
+  <p class="lede">
+    RepoMedic 要回答“order-service 为什么连接池耗尽”。答案散落在 runbook、事故复盘、
+    Java 代码和配置里，总量远超上下文窗口。你不可能把整个知识库塞进去，只能先找出最相关的那几段。
+    这一课只做一件事：把“找得准”变成可测量、可迭代的工程问题。
+  </p>
+
+  <details class="recall">
+    <summary>90 秒回忆：先别往下看，回答第 1、2 课的三件事</summary>
+    <ol>
+      <li>Agent 循环的四个零件是什么？</li>
+      <li>工具的 description 最应该写清哪三件事？</li>
+      <li>为什么写操作的安全边界必须在工具层，而不是系统提示词？</li>
+    </ol>
+    <p><strong>对答案：</strong>LLM + Tools + Loop + Stop condition；何时用、何时不用、默认值与边界；因为 prompt 只是建议，工具层的校验与权限才是强制。</p>
+    <p class="small">有一题答不上来？先回 <a href="0003-agent-loop.html">第 3 课</a> 或 <a href="0004-tool-design.html">第 4 课</a> 补一眼，再回来。</p>
+  </details>
+
+  <div class="toc no-print">
+    <div class="toc-title">本课地图</div>
+    <ol>
+      <li><a href="#budget">先算一笔上下文账</a></li>
+      <li><a href="#pipelines">RAG 的两条流水线</a></li>
+      <li><a href="#embedding">Embedding：语义坐标，不是魔法</a></li>
+      <li><a href="#chunking">Chunking：检索的最小单位</a></li>
+      <li><a href="#hybrid">Hybrid：关键词 + 向量</a></li>
+      <li><a href="#eval">用 Recall@k 证明你找得到</a></li>
+      <li><a href="#quiz">检验一下</a></li>
+      <li><a href="#lab">Lab：给 RepoMedic 建检索层</a></li>
+      <li><a href="#java">和 Java 后端对照</a></li>
+    </ol>
+  </div>
+
+  <div class="callout win">
+    <span class="label">本课结束时，你能</span>
+    <p>① 解释为什么 RAG 的瓶颈通常在检索；② 为一份私有语料设计 chunk 与混合检索；
+    ③ 用 20 例评测产出 Recall@k / MRR / 上下文成本报告，并把失败归因到 chunk、tokenizer、检索器或标签。</p>
+  </div>
+
+  <h2 id="budget"><span class="num">01</span>先算一笔上下文账<a class="anchor" href="#budget">¶</a></h2>
+
+  <p>
+    先别谈模型。算一笔账：一个中型 Java 代码库有 800 个文件，平均 200 行，
+    每行约 10 个 token，就是 <strong>160 万 token</strong>。再叠加三年的 runbook、事故复盘、配置和工单，
+    数字只会更大。即使某个模型的上下文窗口“够大”，你也不会想为每次提问都付这笔钱。
+  </p>
+
+  <p>
+    更麻烦的是，塞进去不等于看得见。上下文越长，模型对中间信息的利用率越差——
+    这就是 <em>context rot</em> 与 “lost in the middle” 现象。
+    Anthropic 在上下文工程指南里把上下文称为<strong>预算</strong>：每一段材料都在和系统提示词、
+    对话历史、其他工具结果争夺模型的注意力。
+    <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective Context Engineering</a> ·
+    <a href="https://arxiv.org/abs/2307.03172">Lost in the Middle (arXiv:2307.03172)</a>
+  </p>
+
+  <p>
+    RAG（Retrieval-Augmented Generation）的原始论文把它描述为“参数化记忆 + 非参数化记忆”的组合：
+    模型负责语言与推理，外部索引负责事实与出处。
+    <a href="https://arxiv.org/abs/2005.11401">Lewis et al., 2020</a>
+    今天的 RAG 管线复杂得多，但核心没变：
+  </p>
+
+  <div class="formula">
+    RAG = <strong>Retrieve</strong>(q, D) → <strong>Augment</strong>(q, chunks) → <strong>Generate</strong>(q, chunks)
+  </div>
+
+  <p>
+    生成模型只能基于它看到的内容回答。所以有一条残酷但重要的上限：
+  </p>
+
+  <div class="callout warn">
+    <span class="label">检索决定上限</span>
+    <p>
+      如果正确片段没有进入 top-k，后面的模型再强也只能猜。检索失败不是“答案不够好”，
+      而是<strong>答案所需的事实根本没到场</strong>。先修检索，再谈 prompt。
+    </p>
+  </div>
+
+  <p>
+    检索有两个失败方向：<strong>漏召回</strong>（该找到的没找到）和<strong>噪音</strong>（找到了很多不相关的）。
+    漏召回是致命的；噪音浪费 token、稀释注意力，但模型有时能自己过滤。
+    这也是为什么本课先把 <em>recall</em> 放在第一位，同时记录上下文成本。
+  </p>
+
+  <h2 id="pipelines"><span class="num">02</span>RAG 的两条流水线<a class="anchor" href="#pipelines">¶</a></h2>
+
+  <p>
+    RAG 不是一个函数，而是两条生命周期完全不同的流水线。把它们混在一起，是很多“demo 能跑、
+    上线就崩”的根源。
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 760 330" role="img" aria-labelledby="rag-title rag-desc">
+      <title id="rag-title">RAG 的离线索引与在线查询两条流水线</title>
+      <desc id="rag-desc">离线：文档经过解析分块，写入 BM25 与向量双索引，并做版本化。在线：查询分别走向两路召回，经 RRF 融合后取 top-k 送入生成模型。</desc>
+      <defs>
+        <marker id="arrow-rag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--rule-strong)"></path>
+        </marker>
+        <marker id="arrow-rag-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+        </marker>
+      </defs>
+
+      <text class="d-label" x="90" y="24" style="text-anchor:start;font-weight:700;">离线索引 · 批处理</text>
+
+      <rect class="d-node-io" x="20" y="44" width="130" height="62" rx="6"></rect>
+      <text class="d-text" x="85" y="70">文档 / 代码</text>
+      <text class="d-sub" x="85" y="90">corpus</text>
+
+      <line class="d-arrow" x1="150" y1="75" x2="190" y2="75" marker-end="url(#arrow-rag)"></line>
+
+      <rect class="d-node" x="190" y="44" width="160" height="62" rx="6"></rect>
+      <text class="d-text" x="270" y="70">解析 + 分块</text>
+      <text class="d-sub" x="270" y="90">heading / line range</text>
+
+      <line class="d-arrow" x1="350" y1="75" x2="390" y2="75" marker-end="url(#arrow-rag)"></line>
+
+      <rect class="d-node-accent" x="390" y="44" width="180" height="62" rx="6"></rect>
+      <text class="d-text" x="480" y="70">双索引</text>
+      <text class="d-sub" x="480" y="90">BM25 + embedding</text>
+
+      <line class="d-arrow" x1="570" y1="75" x2="610" y2="75" marker-end="url(#arrow-rag)"></line>
+
+      <rect class="d-node" x="610" y="44" width="130" height="62" rx="6"></rect>
+      <text class="d-text" x="675" y="70">版本化</text>
+      <text class="d-sub" x="675" y="90">chunk_id + model</text>
+
+      <text class="d-label" x="90" y="190" style="text-anchor:start;font-weight:700;">在线查询 · 毫秒级</text>
+
+      <rect class="d-node-io" x="20" y="210" width="130" height="62" rx="6"></rect>
+      <text class="d-text" x="85" y="236">用户查询</text>
+      <text class="d-sub" x="85" y="256">question</text>
+
+      <line class="d-arrow" x1="150" y1="241" x2="190" y2="241" marker-end="url(#arrow-rag)"></line>
+
+      <rect class="d-node" x="190" y="210" width="160" height="62" rx="6"></rect>
+      <text class="d-text" x="270" y="236">两路召回</text>
+      <text class="d-sub" x="270" y="256">BM25 + vector</text>
+
+      <line class="d-arrow-accent" x1="350" y1="241" x2="390" y2="241" marker-end="url(#arrow-rag-accent)"></line>
+
+      <rect class="d-node-accent" x="390" y="210" width="160" height="62" rx="6"></rect>
+      <text class="d-text" x="470" y="236">RRF 融合</text>
+      <text class="d-sub" x="470" y="256">rank-based</text>
+
+      <line class="d-arrow" x1="550" y1="241" x2="590" y2="241" marker-end="url(#arrow-rag)"></line>
+
+      <rect class="d-node-io" x="590" y="210" width="150" height="62" rx="6"></rect>
+      <text class="d-text" x="665" y="236">top-k → 生成</text>
+      <text class="d-sub" x="665" y="256">citations</text>
+
+      <path class="d-arrow" d="M480,106 C480,160 270,160 270,210" stroke-dasharray="4 4" marker-end="url(#arrow-rag)"></path>
+      <text class="d-label" x="375" y="168">同一份索引</text>
+    </svg>
+    <figcaption>离线索引可以慢、可以批处理；在线查询必须快、可重复，并且只读。</figcaption>
+  </figure>
+
+  <p>
+    两条流水线之间有一份<strong>数据契约</strong>：每个 chunk 至少要带
+    <code>chunk_id</code>、<code>doc_id</code>、<code>heading</code>、<code>text</code> 和行号范围。
+    没有稳定 ID，你就无法引用出处、无法做增量更新、也无法把评测标签绑定到具体证据。
+  </p>
+
+  <pre class="trace">{
+  "chunk_id": "runbooks/db-pool.md#诊断",
+  "doc_id":   "runbooks/db-pool.md",
+  "heading":  "Runbook: 数据库连接池耗尽 &gt; 诊断",
+  "start_line": 12,
+  "end_line": 19,
+  "text": "..."
+}</pre>
+
+  <p>
+    索引是<strong>派生数据</strong>，不是真相源。源文档改了，索引必须重建；embedding 模型换了，
+    整个向量索引作废。生产里最常见的 RAG 事故之一，就是“文档更新了，索引还是三个月前的”。
+    这和你熟悉的缓存失效、物化视图刷新是同一类问题。
+  </p>
+
+  <div class="callout note">
+    <span class="label">Java 后端对照</span>
+    <p>
+      离线流水线 ≈ ETL / 批处理；在线查询 ≈ serving；<code>chunk_id</code> ≈ 稳定主键；
+      索引 ≈ 物化视图；embedding 模型版本 ≈ schema 版本。把这些元数据写进索引，才谈得上可复现。
+    </p>
+  </div>
+
+  <h2 id="embedding"><span class="num">03</span>Embedding：语义坐标，不是魔法<a class="anchor" href="#embedding">¶</a></h2>
+
+  <p>
+    <a href="../reference/glossary.html#term-embedding">Embedding</a> 把文本映射成一个固定长度的向量。
+    语义相近的文本，在向量空间里距离更近；检索时用余弦相似度找最近的邻居。
+    它擅长的是<strong>换一种说法</strong>：用户问“数据库连接被占满了”，文档写“连接池耗尽”，
+    两者没有共同的关键词，但语义相近。
+  </p>
+
+  <p>
+    但它是一种<strong>有损压缩</strong>。压缩会保留“大意”，丢掉“细节”。下面这些，向量往往不可靠：
+  </p>
+
+  <table>
+    <thead><tr><th>输入类型</th><th>向量的表现</th><th>后果</th></tr></thead>
+    <tbody>
+      <tr><td><code>TS-999</code> vs <code>TS-998</code></td><td>字面与语义都很近</td><td>可能召回错误的错误码，处置完全不同</td></tr>
+      <tr><td>类名 / 方法名 / 配置键</td><td>camelCase、缩写、版本号容易被平滑</td><td>精确匹配失败，代码检索不可用</td></tr>
+      <tr><td>数字与单位</td><td>48/50 与 50/48 可能很近</td><td>指标判断反转</td></tr>
+      <tr><td>否定与条件</td><td>“不是连接池问题”可能仍靠近“连接池问题”</td><td>把排除项当成根因</td></tr>
+      <tr><td>同义改写 / 跨语言</td><td>通常表现好</td><td>这是它真正的价值所在</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    所以 embedding 的正确用法不是“替代关键词”，而是“补上关键词抓不到的语义召回”。
+    这也是下一节 hybrid 检索的动机。
+  </p>
+
+  <h3>选模型时看什么</h3>
+
+  <ul>
+    <li><strong>先在自己的语料上测</strong>，不要只看 <a href="https://huggingface.co/spaces/mteb/leaderboard">MTEB 排行榜</a>。排行榜是起点，不是结论；你的语料分布、语言、代码占比都可能不同。</li>
+    <li><strong>维度与成本</strong>：维度越高，存储与计算越贵；对 20–50 个 chunk 的小库，差异可以忽略，对百万级索引就不是。</li>
+    <li><strong>query / document 是否分开编码</strong>：一些模型（如 Voyage）要求查询与文档使用不同的输入类型或前缀，用错会显著掉点。<a href="https://docs.voyageai.com/docs/embeddings">Voyage Embeddings</a></li>
+    <li><strong>版本锁定</strong>：模型升级意味着全量重算。把模型名与维度写进索引元数据，否则你无法解释分数变化。</li>
+  </ul>
+
+  <p>
+    归一化之后，余弦相似度就是点积。实现只有几行：
+  </p>
+
+  <pre><code>def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0</code></pre>
+
+  <div class="callout warn">
+    <span class="label">向量不是语义真值</span>
+    <p>
+      它只是某个模型在某个训练分布上学到的压缩表示。相似不等于相关，更不等于可处置。
+      对代码、错误码、配置键这类“精确标识符”密集的语料，永远保留一条关键词通道。
+    </p>
+  </div>
+
+  <h2 id="chunking"><span class="num">04</span>Chunking：检索的最小单位<a class="anchor" href="#chunking">¶</a></h2>
+
+  <p>
+    <a href="../reference/glossary.html#term-chunking">Chunk</a> 同时是检索、embedding、引用和上下文预算的单位。
+    切得好，模型拿到的是“一段能独立看懂的话”；切得差，它拿到的是“半句话 + 一个孤立的代词”。
+  </p>
+
+  <table>
+    <thead><tr><th>Chunk 过小</th><th>Chunk 过大</th></tr></thead>
+    <tbody>
+      <tr><td>语义不完整，指代丢失</td><td>多个主题被平均进一个向量</td></tr>
+      <tr><td>答案被拆到多个 chunk，召回不全</td><td>检索精度下降，噪音变多</td></tr>
+      <tr><td>引用很精确，但上下文不够</td><td>每次查询消耗大量 token，延迟与成本上升</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    经验起点：事实查找用 <strong>200–500 tokens</strong>，需要推理的段落用 <strong>512–1024 tokens</strong>，
+    重叠 <strong>10–20%</strong>。但这些只是起点，不是答案。Pinecone 的建议很直接：
+    选一组候选尺寸（例如 128/256 与 512/1024），在你的查询集上实测。
+    <a href="https://www.pinecone.io/learn/chunking-strategies/">Chunking Strategies</a>
+  </p>
+
+  <p>
+    优先级更高的不是“多大”，而是“在哪里切”。结构感知的切法会沿 Markdown 标题、段落、Java 类/方法边界走，
+    并把标题路径带进 chunk。Lab 为了把语料压到 14 篇，代码文件整文件作为一个 chunk；
+    真实代码库应该按类/方法切：
+  </p>
+
+  <div class="compare">
+    <div class="bad">
+      <h4>固定窗口</h4>
+      <pre><code>... 48/50。20:40 回滚到
+v2.14.0，20:46 指标恢复。
+## 根因
+v2.14.1 在 OrderQuery
+Service.findRecentOrders
+中把批量查询改成了循环
+...</code></pre>
+      <p>标题、函数名、句子都可能被切断；模型看到的是碎片。</p>
+    </div>
+    <div class="good">
+      <h4>结构感知</h4>
+      <pre><code># 事故复盘：2026-10-24
+## 根因
+v2.14.1 在 OrderQueryService.
+findRecentOrders 中把批量查询
+改成了循环查询，形成 N+1。
+单个请求从 2 次 SQL 变成
+1 + N 次 SQL。</code></pre>
+      <p>标题路径 + 完整句子；chunk_id 可稳定指向这一段。</p>
+    </div>
+  </div>
+
+  <p>
+    更进阶的一步是 <strong>contextual retrieval</strong>：在把 chunk 送去 embedding / BM25 之前，
+    先用一个便宜模型为它写 50–100 token 的“情境说明”，比如“这段来自 2026-10-24 order-service
+    的连接池事故复盘，讨论根因”。Anthropic 报告称，在 top-20 检索失败率上：
+    contextual embeddings <strong>−35%</strong>，加上 contextual BM25 后 <strong>−49%</strong>，
+    再加 rerank 后 <strong>−67%</strong>（5.7% → 1.9%）。配合 prompt caching，成本约为
+    <strong>$1.02 / 百万文档 token</strong>。
+    <a href="https://www.anthropic.com/news/contextual-retrieval">Contextual Retrieval</a>
+  </p>
+
+  <p>
+    Lab 里的 structure chunker 对 Markdown 做的是它的“穷人版”：把文档标题前缀到每个 chunk。
+    这不需要模型调用，但已经能让 chunk 不再完全失去上下文。你可以把它理解为
+    <em>deterministic context header</em>。
+  </p>
+
+  <div class="callout note">
+    <span class="label">Small-to-big / parent-child</span>
+    <p>
+      如果检索单位要小、但生成需要大，可以“检索小子块，返回父段落”。
+      这能同时拿到精确召回与足够上下文。Lab 里你会先看到反例：k=5 时答案被拆在两个 chunk 里，
+      把 k 调到 10 才把两块都捞回来——这就是 chunk 边界问题的具体形状。
+    </p>
+  </div>
+
+  <h2 id="hybrid"><span class="num">05</span>Hybrid：关键词 + 向量<a class="anchor" href="#hybrid">¶</a></h2>
+
+  <p>
+    <a href="../reference/glossary.html#term-hybrid-search">Hybrid search</a> 同时跑两路召回：
+    关键词检索（BM25）与向量检索，再把两份排名融合。它不是“更高级”，而是“两种错误模式互补”。
+  </p>
+
+  <h3>BM25 在做什么</h3>
+
+  <p>
+    BM25 建立在 TF-IDF 上：一个词越罕见（IDF 高），命中它越值钱；一个词在文档里重复太多次，
+    收益会饱和（<code>k1</code>）；文档越长，越要打折（<code>b</code>）。典型参数是
+    <code>k1=1.5</code>、<code>b=0.75</code>。你不需要背公式，但要理解它的偏好：
+    <strong>精确、罕见、可枚举的词</strong>。
+  </p>
+
+  <div class="formula">
+    score(q,d) = Σ <strong>IDF(q<sub>i</sub>)</strong> · f(q<sub>i</sub>,d) · (k<sub>1</sub>+1) / ( f(q<sub>i</sub>,d) + k<sub>1</sub>(1−b+b·|d|/avgdl) )
+  </div>
+
+  <p>
+    因为 BM25 只看词面，tokenizer 的质量直接决定召回。对代码与中文语料，至少要做三件事：
+  </p>
+
+  <ul>
+    <li><strong>拆标识符</strong>：<code>findRecentOrders</code> → <code>find</code> / <code>recent</code> / <code>orders</code>；<code>db_pool.used</code> → <code>db</code> / <code>pool</code> / <code>used</code>。</li>
+    <li><strong>保留整串</strong>：同时保留 <code>findrecentorders</code> 与 <code>db_pool.used</code>，精确查询才有强信号。</li>
+    <li><strong>中文 bigram</strong>：没有分词词典时，<code>数据库连接池</code> 切成 <code>数据</code>/<code>据库</code>/<code>库连</code>/<code>连接</code>/<code>接池</code>，比按空格切可靠得多。</li>
+  </ul>
+
+  <h3>两路怎么选</h3>
+
+  <table>
+    <thead><tr><th>查询类型</th><th>更可能赢</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>精确标识符</td><td>BM25</td><td><code>TS-999</code>、<code>findRecentOrders</code>、<code>maximum-pool-size</code></td></tr>
+      <tr><td>口语化改写</td><td>向量</td><td>“数据库连接被占满了” → “连接池耗尽”</td></tr>
+      <tr><td>指标 + 因果</td><td>两者</td><td>“p99 2400ms、连接池 48/50，最可能是什么原因？”</td></tr>
+      <tr><td>跨文档多跳</td><td>两者 + 更大 k</td><td>“v2.14.1 改了什么，和哪个类有关？”</td></tr>
+    </tbody>
+  </table>
+
+  <h3>融合：RRF</h3>
+
+  <p>
+    BM25 的分数和 cosine 的分数尺度不同，直接相加没有意义。
+    Reciprocal Rank Fusion（RRF）只看排名：
+  </p>
+
+  <div class="formula">
+    score(chunk) = Σ <strong>1 / (k + rank<sub>i</sub>)</strong>，常用 k = 60
+  </div>
+
+  <p>
+    两路都排在前面的 chunk 会得到更高分；只在单路出现的 chunk 也有机会。
+    这是“共识优先”的融合。Weaviate 的 <code>alpha</code> 则是另一条路：
+    <code>alpha=1</code> 纯向量，<code>alpha=0</code> 纯关键词，中间值按权重混合。
+    <a href="https://docs.weaviate.io/weaviate/search/hybrid">Weaviate — Hybrid Search</a>
+  </p>
+
+  <p>
+    实现细节：每路先召回 <strong>50 个候选</strong>，融合后再取 top-5 或 top-10。
+    如果只融合每路的 top-5，你会丢掉“单路排第 8、另一路排第 3”的好候选。
+  </p>
+
+  <div class="callout note">
+    <span class="label">Hybrid 不是免费午餐</span>
+    <p>
+      两套索引、两倍写入、两倍的失败模式，在线还要多一次查询与融合。对代码、错误码、配置键密集的语料，
+      它通常值得；对纯自然语言、语料很小的场景，先用好一路，再决定要不要加。
+    </p>
+  </div>
+
+  <h2 id="eval"><span class="num">06</span>用 Recall@k 证明你找得到<a class="anchor" href="#eval">¶</a></h2>
+
+  <p>
+    “感觉检索变好了”不是证据。你需要一组带标签的查询，以及一组能分开诊断的指标。
+    Lab 的 20 个用例分四类：<strong>keyword</strong>（精确标识符）、<strong>semantic</strong>（口语改写）、
+    <strong>mixed</strong>（指标 + 因果）、<strong>multi-hop</strong>（跨文档）。
+  </p>
+
+  <table>
+    <thead><tr><th>指标</th><th>回答的问题</th><th>怎么算</th></tr></thead>
+    <tbody>
+      <tr><td>Recall@k</td><td>该找到的证据，有多少进了 top-k？</td><td>命中证据数 / 证据总数，按用例平均</td></tr>
+      <tr><td>Full@k</td><td>所有证据都进 top-k 的用例比例？</td><td>多证据全部命中的用例 / 总用例</td></tr>
+      <tr><td>MRR@k</td><td>第一条命中证据排第几？</td><td>1 / 首次命中的排名，按用例平均</td></tr>
+      <tr><td>Precision</td><td>top-k 里有多少 chunk 真有用？</td><td>命中 chunk 数 / top-k 长度</td></tr>
+      <tr><td>Context chars</td><td>每次查询塞进多少上下文？</td><td>top-k chunk 的字符数之和，按用例平均</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Ragas 把检索质量拆成 context recall 与 context precision 等指标，并用 LLM 判断“参考事实是否被检索到”。
+    Lab 用的是更便宜、更确定的<strong>证据标签</strong>：每条查询绑定 <code>doc</code> + <code>contains</code> 短语。
+    它没有 LLM judge 那么灵活，但可复现、可在 CI 里跑；标签的正确性由你负责。
+    <a href="https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/">Ragas — Available Metrics</a>
+  </p>
+
+  <h3>本 lab 的真实离线结果</h3>
+
+  <p class="small">2026-10-24 实测，structure chunker，k=5。你的环境可能有小数差异；不要把它当成排行榜。</p>
+
+  <table>
+    <thead><tr><th>Retriever</th><th>Recall@5</th><th>Full@5</th><th>MRR@5</th><th>Precision</th><th>Context chars</th></tr></thead>
+    <tbody>
+      <tr><td><code>bm25</code></td><td>0.625</td><td>0.550</td><td>0.552</td><td>0.250</td><td>1033</td></tr>
+      <tr><td><code>vector(lexical)</code></td><td>0.650</td><td>0.600</td><td>0.499</td><td>0.250</td><td>1100</td></tr>
+      <tr><td><code>hybrid(lexical)</code></td><td>0.650</td><td>0.600</td><td>0.506</td><td>0.260</td><td>1115</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    注意 <code>vector(lexical)</code>：它是离线占位的<strong>词面向量</strong>，不是语义 embedding。
+    所以 hybrid 只比 BM25 高一点。这不是“向量检索没用”，而是“这个代理指标测不出语义收益”。
+    真实结论要等你接上 embedding 再看。
+  </p>
+
+  <h3>不要只看平均分：Recall 与上下文成本</h3>
+
+  <table>
+    <thead><tr><th>配置</th><th>Recall@k</th><th>Context chars</th><th>你付出的代价</th></tr></thead>
+    <tbody>
+      <tr><td>structure · k=5</td><td>0.625</td><td>1033</td><td>上下文最省，但多跳/跨节证据容易漏</td></tr>
+      <tr><td>structure · k=10</td><td>0.825</td><td>1895</td><td>召回上升，上下文接近翻倍</td></tr>
+      <tr><td>naive-600 · k=5</td><td>0.800</td><td>2209</td><td>靠“每块塞更多字”提高命中，成本更高，精度没有提升</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    这组数字想说明的不是“naive 更好”。naive 在 k=5 时靠更大的块把 recall 刷到 0.800，
+    但 structure 把 k 调到 10 后反超到 0.825，上下文还更少。公平的比较要在相近预算下做，
+    并且同时看 precision 与 context chars。这也是为什么第 6 课的 rerank 有价值：
+    先宽召回，再用更贵的模型精排，把噪音压下去。
+  </p>
+
+  <div class="callout warn">
+    <span class="label">平均分是谎言</span>
+    <p>
+      本 lab 的 hybrid 在 keyword 切片上 recall=1.000，在 semantic 切片上只有 0.429。
+      平均 0.650 会把这条裂缝藏起来。永远按查询类型切片，先修最差的那一类。
+    </p>
+  </div>
+
+  <h3>失败归因：先分类，再调参</h3>
+
+  <table>
+    <thead><tr><th>症状</th><th>可能原因</th><th>下一步</th></tr></thead>
+    <tbody>
+      <tr><td>top-k 里完全没有正确文档</td><td>检索器/分词/embedding 不匹配</td><td>看 tokenizer；对精确查询加 BM25；换 embedding 前先做小实验</td></tr>
+      <tr><td>正确文档在，但正确段落不在</td><td>chunk 边界 / 粒度</td><td>调 k、改 chunker、parent-child / small-to-big</td></tr>
+      <tr><td>正确段落排在第 6–10 名</td><td>融合权重 / 候选不足</td><td>加大 candidate_k、调 RRF、上 rerank</td></tr>
+      <tr><td>标签里的短语在文档中不存在</td><td>评测集腐烂</td><td>改标签；把 validate 放进 CI</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Lab 里的 Q14 是一个典型：查询同时包含 p99 指标和“最可能原因”。指标在“证据”段，
+    原因 N+1 在“根因”段；structure chunker 把它们切成两块，k=5 时只捞到指标。
+    BM25 要到 k=10 才把根因捞回来；hybrid 在 k=7 就够——RRF 把单路排名靠后的根因块拉了进来。
+    这不是模型不聪明，是<strong>证据跨 chunk</strong>。解决办法是更大的 k、parent-child，或者让检索器返回相邻块。
+  </p>
+
+  <h2 id="quiz"><span class="num">07</span>检验一下<a class="anchor" href="#quiz">¶</a></h2>
+
+  <p class="small">先自己想，再点选项。答错会给出解释。</p>
+
+  <div class="quiz" data-quiz>
+    <div class="quiz-q" data-answer="a" data-explain="生成只能基于看到的内容。正确片段没进 top-k，模型再强也只能猜；所以先修 recall，再谈 prompt 与模型。">
+      <p class="quiz-prompt">为什么 RAG 里检索层值得优先优化？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>检索失败会让正确信息根本不进上下文</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>生成模型通常比检索模型更便宜也更稳定</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>检索可以完全替代模型自身的推理能力</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>生成模型无法处理任何形式的长上下文</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="d" data-explain="chunk 过大时，embedding 会把多个主题平均进去，检索精度下降，同时上下文成本上升。它不是“更安全”，而是“更模糊”。">
+      <p class="quiz-prompt">chunk 设得过大，最直接的代价是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>索引文件会大到无法写入磁盘</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>模型会直接拒绝处理这段上下文</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>关键词检索会彻底失效无法使用</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>语义被稀释，检索精度随之下降</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="c" data-explain="TS-999 是精确标识符。向量可能把 TS-998 也召回来，但两者处置完全不同；BM25 对罕见、精确的词更可靠。">
+      <p class="quiz-prompt">哪个查询最适合 BM25，而不是纯向量检索？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>服务为什么突然变慢了这类口语描述</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>连接池耗尽通常应该怎么处理的这类问题</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>TS-999 错误码到底是什么意思</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>最近一次发布究竟修改了哪些内容呢</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="a" data-explain="BM25 分数与 cosine 分数尺度不同，直接相加会让某一路支配结果。RRF 只看排名，天然规避了量纲问题。">
+      <p class="quiz-prompt">RRF 用排名而不是原始分数融合，主要因为什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>两路检索器的分数尺度和分布不同</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>排名一定比原始分数更准确也更可靠</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>原始分数无法被程序读取和进行比较</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>排名计算比分数计算更快也更省内存</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="平均分高可能掩盖某一类查询的系统性失败。先按 keyword / semantic / multi-hop 切片，找到最差的一类，再决定调 k、改 chunk 还是换检索器。">
+      <p class="quiz-prompt">平均 Recall@5 是 0.85，下一步最该做什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>直接上线，因为平均分已经足够高</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>按查询类型切片，定位失败集中在哪里</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>把 k 调到 50，把召回率继续拉高</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>换一个更大的生成模型来补救回答</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-score" aria-live="polite"></div>
+  </div>
+
+  <h2 id="lab"><span class="num">08</span>Lab：给 RepoMedic 建检索层<a class="anchor" href="#lab">¶</a></h2>
+
+  <p>
+    代码在 <a href="../labs/0005-rag-retrieval/">labs/0005-rag-retrieval/</a>。
+    语料是 14 篇 RepoMedic 文档：runbook、事故复盘、Java 代码、配置、错误码。
+    评测集是 20 个查询，每个都绑定“文档 + 证据短语”。
+  </p>
+
+  <h3>Step 1 · 离线校验（5 分钟）</h3>
+  <pre><code>cd labs/0005-rag-retrieval
+python3 -m unittest -v
+python3 eval.py --validate</code></pre>
+  <p>
+    29 个测试覆盖 tokenizer、BM25、chunking、RRF、指标与索引往返。
+    <code>--validate</code> 检查 20 个用例的证据文档是否存在、证据短语是否还在原文里。
+    这一步不需要 API key。
+  </p>
+
+  <h3>Step 2 · 构建索引，跑三种检索器（10 分钟）</h3>
+  <pre><code>python3 index.py --chunker structure --out index/structure.json
+python3 eval.py --index index/structure.json --retriever all</code></pre>
+  <p>
+    重点看三件事：keyword 切片是否接近满分；semantic 切片是否明显更低；
+    hybrid 是否在两者之间取得更好的整体 recall。然后看失败列表：
+    每条失败都缺了哪条证据？top-k 里又是什么？
+  </p>
+
+  <h3>Step 3 · structure vs naive：比较召回与上下文成本（10 分钟）</h3>
+  <pre><code>python3 index.py --chunker naive --size 600 --overlap 80 --out index/naive-600.json
+python3 eval.py --index index/naive-600.json --retriever bm25
+python3 eval.py --index index/structure.json --retriever bm25 --k 10</code></pre>
+  <p>
+    在 k=5 时，naive-600 的 recall 更高，但 <code>ctx_chars</code> 也接近翻倍。structure 把 k 调到 10 后，
+    整体 recall 反超（0.825），成本仍低于 naive。回答：如果上下文预算固定，你会选哪个？为什么？
+  </p>
+
+  <h3>Step 4 · 定位一个“跨 chunk”失败（8 分钟）</h3>
+  <pre><code>python3 eval.py --index index/structure.json --retriever bm25 --k 5 --case Q14
+python3 eval.py --index index/structure.json --retriever bm25 --k 10 --case Q14
+python3 eval.py --index index/structure.json --retriever hybrid --k 7 --case Q14</code></pre>
+  <p>
+    Q14 同时包含 p99 指标和“最可能原因”。指标在“证据”段，原因 N+1 在“根因”段。
+    BM25 要 k=10 才把根因捞回来；hybrid 在 k=7 就够，因为 RRF 把单路排名靠后的根因块拉了进来。
+    然后回答：这是 chunk 边界、tokenizer、检索器，还是标签的问题？
+  </p>
+
+  <h3>Step 5 · 可选：接真实 embedding（10 分钟）</h3>
+  <pre><code>cp .env.example .env
+# 填写 EMBEDDING_API_KEY / EMBEDDING_BASE_URL / EMBEDDING_MODEL
+
+python3 index.py --chunker structure --embed-api --out index/structure-embedded.json
+python3 eval.py --index index/structure-embedded.json --retriever all</code></pre>
+  <p>
+    观察 semantic 切片是否上升，以及 <code>hybrid(dense:...)</code> 是否比单路更稳。
+    如果供应商不提供 embedding，跳过这一步；不要用 <code>vector(lexical)</code> 的结果冒充语义检索。
+  </p>
+
+  <h3>Step 6 · 回答三个问题</h3>
+  <ol>
+    <li>为什么 keyword 切片接近满分，而 semantic 切片明显更低？这是 tokenizer、embedding 还是语料的问题？</li>
+    <li>naive-600 的 recall 更高，为什么它不一定更好？请用 <code>ctx_chars</code> 和 <code>prec</code> 解释。</li>
+    <li>如果 Q14 这类“指标 + 根因”查询占你线上流量的一半，你会改 chunk、改 k，还是加 rerank？为什么？</li>
+  </ol>
+
+  <h3>成功标准</h3>
+  <ul class="checklist" data-persist="lesson3-lab">
+    <li><label><input type="checkbox"><span>29 个测试全绿，<code>eval.py --validate</code> 通过</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 recall / full / MRR / precision / ctx_chars 各自回答什么问题</span></label></li>
+    <li><label><input type="checkbox"><span>能指出 hybrid 在哪个切片上最弱，并给出一个可验证的改法</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 Q14 为什么在 k=5 失败、把 k 或 hybrid 调大后成功</span></label></li>
+    <li><label><input type="checkbox"><span>用 structure vs naive 的数字说明“召回可以被更多文本刷高”</span></label></li>
+    <li><label><input type="checkbox"><span>（可选）用真实 embedding 跑过 dense 与 hybrid，并比较 semantic 切片</span></label></li>
+  </ul>
+
+  <h2 id="java"><span class="num">09</span>和 Java 后端对照<a class="anchor" href="#java">¶</a></h2>
+
+  <p>
+    这一课几乎是后端工程经验的直译。变化只有一个：检索的“客户端”是模型，不是程序。
+  </p>
+
+  <table>
+    <thead><tr><th>RAG 概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>embedding model</td><td>搜索引擎的 analyzer / 语义索引</td></tr>
+      <tr><td>BM25</td><td>倒排索引 + TF-IDF 排序</td></tr>
+      <tr><td>RRF</td><td>多路有序结果归并（merge sorted lists）</td></tr>
+      <tr><td><code>chunk_id</code></td><td>稳定主键 / 文档版本号</td></tr>
+      <tr><td>索引重建</td><td>物化视图刷新 / 缓存失效</td></tr>
+      <tr><td>Recall@k</td><td>SLI + 回归测试通过率</td></tr>
+      <tr><td>黄金集</td><td>契约测试 + 集成测试</td></tr>
+      <tr><td>chunk metadata</td><td>trace tag / 日志上下文</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    最大的认知转变是：<strong>检索质量是一个分布问题，不是一次调用问题</strong>。
+    你不能靠“这次答案看起来不错”判断系统可靠；你需要一组查询、一组标签、一组按类型切片的指标，
+    然后在每次改 chunk、改模型、改融合参数后重跑。第 3 周我们会把这套东西扩展成完整的评测体系。
+  </p>
+
+  <div class="source-card">
+    <div class="label">本课精读</div>
+    <h3>Anthropic — Contextual Retrieval</h3>
+    <p>
+      读完全文（约 15 分钟）。重点看：为什么要给 chunk 补上下文、contextual embeddings 与
+      contextual BM25 的组合、以及 rerank 的收益与成本。读完回到 lab，对照
+      <code>rag.py</code> 的 structure chunker，看它对应了哪一条。
+    </p>
+    <p><a href="https://www.anthropic.com/news/contextual-retrieval">anthropic.com/news/contextual-retrieval</a></p>
+    <p class="small">
+      选读：<a href="https://www.pinecone.io/learn/chunking-strategies/">Pinecone — Chunking Strategies</a> ·
+      <a href="https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/">Ragas — Metrics</a> ·
+      <a href="https://arxiv.org/abs/2005.11401">RAG 原始论文</a>
+    </p>
+  </div>
+
+  <p class="small center no-print">
+    打印版：<a href="../reference/rag-retrieval-checklist.html">RAG 检索清单</a> ·
+    设计 chunk、选检索器、读评测报告时逐项过一遍。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">卡住了？</span>
+    <p>
+      回到终端问你的老师：“lesson 0005 里 Q14 为什么 k=5 会漏掉根因？”
+      或者把 <code>reports/retrieval-structure-all.json</code> 里的失败轨迹贴过来，我们一起归因。
+    </p>
+  </div>
+
+  <p class="small center no-print" style="margin-top:2.2rem;">
+    下一课：<a href="0006-rerank-citations.html">RAG II——检索到了，模型仍然答错时，问题出在重排、引用还是上下文组织</a>。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="0004-tool-design.html">← 第 4 课：工具设计</a>
+    <a href="../reference/course-roadmap.html">课程路线图</a>
+    <a href="../reference/glossary.html">术语表</a>
+    <a class="next" href="0006-rerank-citations.html">第 6 课：RAG II →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

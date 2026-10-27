@@ -8,7 +8,7 @@
 ### 状态、记忆与上下文工程
 
 - [Anthropic — Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
-  **第 5 课精读**。context rot、attention budget、compaction（保留决策/未解决 bug/实现细节，丢弃冗余工具输出）、structured note-taking、sub-agent。
+  **第 7 课精读**。context rot、attention budget、compaction（保留决策/未解决 bug/实现细节，丢弃冗余工具输出）、structured note-taking、sub-agent。
 - [LangGraph — Memory](https://docs.langchain.com/oss/python/langgraph/memory)
   短期记忆 = thread-scoped state + checkpointer；长期记忆 = 跨会话 namespace/store；semantic / episodic / procedural；热路径 vs 后台写入。
 - [OpenAI Agents SDK — Sessions](https://openai.github.io/openai-agents-python/sessions/)
@@ -25,7 +25,7 @@
 ### 检索与 RAG
 
 - [Anthropic — Citations](https://platform.claude.com/docs/en/build-with-claude/citations)
-  **第 4 课精读**。结构化引用：文档切句、`cited_text`、`document_index`、字符/页码/块索引；RAG 场景下每个 retrieved chunk 作为一个 document。
+  **第 6 课精读**。结构化引用：文档切句、`cited_text`、`document_index`、字符/页码/块索引；RAG 场景下每个 retrieved chunk 作为一个 document。
 - [Anthropic — Introducing Citations](https://claude.com/resources/articles/introducing-citations-api)
   发布说明：内置引用比多数自定义实现最多高 15% recall accuracy；`cited_text` 不计输出 token。
 - [Pinecone — Rerankers and Two-Stage Retrieval](https://www.pinecone.io/learn/series/rag/rerankers/)
@@ -41,13 +41,13 @@
 - [Ragas — Faithfulness](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/faithfulness/)
   claim 级有据性：被 retrieved context 支持的 claim / 总 claim。答案级评测的起点。
 - [Anthropic — Contextual Retrieval](https://www.anthropic.com/news/contextual-retrieval)
-  **第 3 课精读**。给 chunk 补 50–100 token 情境说明，再做 contextual embeddings + contextual BM25；报告 top-20 失败率 −35% / −49% / −67%（加 rerank）。含成本与 prompt caching 细节。
+  **第 5 课精读**。给 chunk 补 50–100 token 情境说明，再做 contextual embeddings + contextual BM25；报告 top-20 失败率 −35% / −49% / −67%（加 rerank）。含成本与 prompt caching 细节。
 - [Pinecone — Chunking Strategies](https://www.pinecone.io/learn/chunking-strategies/)
-  chunk 大小、重叠、fixed / recursive / structure-aware / semantic 切分的取舍。第 3 课 lab 的默认值来源。
+  chunk 大小、重叠、fixed / recursive / structure-aware / semantic 切分的取舍。第 5 课 lab 的默认值来源。
 - [Lewis et al. — Retrieval-Augmented Generation (arXiv:2005.11401)](https://arxiv.org/abs/2005.11401)
   RAG 原始论文：参数化记忆 + 非参数化记忆。读摘要与第 1–2 节即可。
 - [Weaviate — Hybrid Search](https://docs.weaviate.io/weaviate/search/hybrid)
-  BM25 + 向量融合的工程实现，`alpha` 权重与 ranked fusion。第 3 课 hybrid 检索的对照。
+  BM25 + 向量融合的工程实现，`alpha` 权重与 ranked fusion。第 5 课 hybrid 检索的对照。
 - [Ragas — Available Metrics](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/)
   context recall / context precision / faithfulness 等 RAG 评测指标。第 3 周评测扩展的基础。
 - [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
@@ -66,7 +66,7 @@
 - [Anthropic — How We Built Our Multi-Agent Research System](https://www.anthropic.com/engineering/multi-agent-research-system)
   多 Agent 的真实工程复盘：orchestrator-worker、token 成本、评测与失败模式。第 2 周选读。
 - [ReAct: Synergizing Reasoning and Acting in Language Models (arXiv:2210.03629)](https://arxiv.org/abs/2210.03629)
-  ReAct 循环的原始论文。读第 1–2 节即可建立直觉。**第 1 课选读**。
+  ReAct 循环的原始论文。读第 1–2 节即可建立直觉。**第 3 课选读**。
 - [Lilian Weng — LLM Powered Autonomous Agents](https://lilianweng.github.io/posts/2023-06-23-agent/)
   经典分类：Planning / Memory / Tool Use。用于建立全局地图，不是实现指南。
 - [12-Factor Agents (HumanLayer)](https://github.com/humanlayer/12-factor-agents)
