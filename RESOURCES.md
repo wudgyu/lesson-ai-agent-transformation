@@ -5,6 +5,23 @@
 
 ## Knowledge
 
+### LLM 基础与上下文工程
+
+- [OpenAI — Text generation](https://platform.openai.com/docs/guides/text-generation)
+  **第 1 课精读**。消息角色、temperature / top_p、max_tokens、流式、structured outputs 的官方说明。
+- [OpenAI — Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs)
+  JSON Schema 约束、严格模式、拒绝与失败处理。第 1 课 lab 的 schema 契约来源。
+- [Anthropic — Token counting](https://docs.anthropic.com/en/docs/build-with-claude/token-counting)
+  token 计数与上下文预算的官方说明；配合第 1 课的预算拆解。
+- [Anthropic — Prompt engineering overview](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview)
+  **第 2 课精读**。system prompt、清楚直接、示例、输出格式、角色与约束的组织方式。
+- [Anthropic — System prompts](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/system-prompts)
+  system prompt 的职责与边界；不要把用户输入拼进 system。
+- [Anthropic — Few-shot examples](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/few-shot-examples)
+  示例选择、格式一致性与标签平衡；few-shot 主要教格式与边界，不是塞知识。
+- [OpenAI — Prompt engineering](https://platform.openai.com/docs/guides/prompt-engineering)
+  输出契约、分隔符、少样本与迭代方法；选读。
+
 ### 状态、记忆与上下文工程
 
 - [Anthropic — Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)

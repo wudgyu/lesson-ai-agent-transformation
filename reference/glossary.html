@@ -68,12 +68,17 @@
     <table>
       <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
       <tbody>
-        <tr id="term-llm"><td>大语言模型<span class="en">LLM</span></td><td>在海量文本上训练、根据上下文预测下一个 token 的模型。它本身不执行工具、不访问网络、不记忆会话。</td><td>W1</td></tr>
-        <tr id="term-token"><td>Token</td><td>模型处理文本的最小单位，约等于一个词或词的一部分。计费、上下文长度、延迟都以它为单位。</td><td>W1</td></tr>
-        <tr id="term-context-window"><td>上下文窗口<span class="en">context window</span></td><td>模型单次调用能看到的 token 总量（输入 + 输出）。它是硬上限，也是成本与延迟的主要来源。</td><td>W1</td></tr>
-        <tr id="term-sampling"><td>采样<span class="en">sampling</span></td><td>模型从概率分布中选下一个 token 的方式。temperature、top_p 等参数控制随机性；Agent 任务通常需要低随机性。</td><td>W1</td></tr>
-        <tr id="term-structured-output"><td>结构化输出<span class="en">structured output</span></td><td>让模型按 JSON Schema 等格式返回，便于程序解析。工具参数本质上也是结构化输出。</td><td>W1</td></tr>
-        <tr id="term-function-calling"><td>函数调用<span class="en">function calling / tool calling</span></td><td>模型输出一个结构化的“我要调用某工具、参数是……”的请求；真正执行的是你的代码。</td><td>W1 L3</td></tr>
+        <tr id="term-llm"><td>大语言模型<span class="en">LLM</span></td><td>在海量文本上训练、根据上下文预测下一个 token 的模型。它本身不执行工具、不访问网络、不记忆会话。</td><td>W1 L1</td></tr>
+        <tr id="term-token"><td>Token</td><td>模型处理文本的最小单位，约等于一个词或词的一部分。计费、上下文长度、延迟都以它为单位。</td><td>W1 L1</td></tr>
+        <tr id="term-context-window"><td>上下文窗口<span class="en">context window</span></td><td>模型单次调用能看到的 token 总量（输入 + 输出）。它是硬上限，也是成本与延迟的主要来源。</td><td>W1 L1</td></tr>
+        <tr id="term-sampling"><td>采样<span class="en">sampling</span></td><td>模型从概率分布中选下一个 token 的方式。temperature、top_p 等参数控制随机性；Agent 任务通常需要低随机性。</td><td>W1 L1</td></tr>
+        <tr id="term-structured-output"><td>结构化输出<span class="en">structured output</span></td><td>让模型按 JSON Schema 等格式返回，便于程序解析。工具参数本质上也是结构化输出。</td><td>W1 L1</td></tr>
+        <tr id="term-function-calling"><td>函数调用<span class="en">function calling / tool calling</span></td><td>模型输出一个结构化的“我要调用某工具、参数是……”的请求；真正执行的是你的代码。</td><td>W1 L1 · L3</td></tr>
+        <tr id="term-temperature"><td>温度<span class="en">temperature</span></td><td>缩放 logits 的采样参数：越低越接近最高概率，越高越随机。0 只降低随机性，不保证绝对确定。</td><td>W1 L1</td></tr>
+        <tr id="term-top-p"><td>核采样<span class="en">top_p</span></td><td>只保留累计概率最高的一部分 token 再采样。与 temperature 都会改变分布形状，不要同时盲调。</td><td>W1 L1</td></tr>
+        <tr id="term-json-schema"><td>JSON Schema</td><td>描述 JSON 结构、类型、枚举、必填字段的契约。用于结构化输出、工具参数与校验。</td><td>W1 L1</td></tr>
+        <tr id="term-streaming"><td>流式响应<span class="en">streaming</span></td><td>模型把输出拆成增量 delta 返回，最后给完整文本与 usage。改善首 token 延迟，不改变总 token 成本。</td><td>W1 L1</td></tr>
+        <tr id="term-repair-loop"><td>修复循环<span class="en">repair loop</span></td><td>结构化输出校验失败时，把错误反馈给模型并重试有限次数；仍失败则降级或转人工。</td><td>W1 L1</td></tr>
         <tr id="term-context-rot"><td>上下文腐化<span class="en">context rot</span></td><td>上下文越长，模型对其中信息的利用越差。不是“塞得越多越好”，需要裁剪、压缩与检索。</td><td>W2</td></tr>
       </tbody>
     </table>

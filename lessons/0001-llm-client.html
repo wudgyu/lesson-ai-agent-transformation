@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 1 课 · LLM 工程师心智模型</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 第 1 周 · 第 1 课</div>
+  <h1>模型是一个有预算的采样器</h1>
+  <p class="subtitle">Token、context、sampling、structured output——Agent 的可靠性从一次调用开始。</p>
+  <div class="meta">
+    <span>Lesson 0001</span>
+    <span>约 75 分钟</span>
+    <span>阅读 25′ · 测验 5′ · Lab 45′</span>
+    <span>无需 API key 可完成核心 Lab</span>
+  </div>
+
+  <p class="lede">
+    你写过 Java 服务，也调用过 LLM API。但很多“Agent 不听话”的问题，
+    其实发生在一次模型调用里：上下文塞得太满、输出没有契约、temperature 太高、
+    把 <code>tool_calls</code> 当成已经执行。这一课把这次调用拆开。
+  </p>
+
+  <details class="recall">
+    <summary>先测一下直觉：3 个判断题</summary>
+    <ol>
+      <li>模型会自己执行工具吗？</li>
+      <li><code>temperature=0</code> 能保证每次输出完全一致吗？</li>
+      <li>上下文窗口是“输入 + 输出”共享的预算吗？</li>
+    </ol>
+    <p><strong>对答案：</strong>不会，执行的是你的代码；不能，它只降低随机性；是，输入与输出共用同一个窗口。</p>
+    <p class="small">如果三题都答对，这一课会给你一套可复用的 client 与 schema 契约；如果有一题犹豫，正好补上。</p>
+  </details>
+
+  <div class="toc no-print">
+    <div class="toc-title">本课地图</div>
+    <ol>
+      <li><a href="#model">模型在做什么</a></li>
+      <li><a href="#tokens">Token 与上下文预算</a></li>
+      <li><a href="#sampling">采样：temperature / top_p</a></li>
+      <li><a href="#structured">结构化输出</a></li>
+      <li><a href="#protocol">一次调用的消息协议</a></li>
+      <li><a href="#quiz">检验一下</a></li>
+      <li><a href="#lab">Lab：流式 client + 修复循环</a></li>
+      <li><a href="#java">和 Java 后端对照</a></li>
+    </ol>
+  </div>
+
+  <div class="callout win">
+    <span class="label">本课结束时，你能</span>
+    <p>① 用 token 预算解释一次调用的成本与上限；② 选择合适的采样参数并解释其副作用；
+    ③ 写出带流式输出、usage 统计、schema 校验与修复循环的 LLM client。</p>
+  </div>
+
+  <h2 id="model"><span class="num">01</span>模型在做什么<a class="anchor" href="#model">¶</a></h2>
+
+  <p>
+    <a href="../reference/glossary.html#term-llm">LLM</a> 的本质是<strong>下一个 token 的概率分布</strong>：
+    给定上下文，它输出词表上每个 token 的分数，采样出一个 token，再把它接回上下文，重复。
+  </p>
+
+  <div class="formula">
+    P(next token | context) = softmax(<strong>logits</strong> / temperature)
+  </div>
+
+  <p>
+    这句话有三个工程后果：
+  </p>
+
+  <ul>
+    <li><strong>它不执行任何东西。</strong>模型不会打开文件、不会发 HTTP 请求、不会写数据库；它只会输出“我想调用某个工具”的结构化请求。执行的是你的代码。</li>
+    <li><strong>它没有记忆。</strong>每次调用看到的只有你传进去的 context；上一次调用发生过什么，除非你写进 context，否则不存在。</li>
+    <li><strong>它是概率性的。</strong>同一个输入可能得到不同输出；这既是能力，也是工程风险的来源。</li>
+  </ul>
+
+  <div class="callout warn">
+    <span class="label">模型不执行工具</span>
+    <p>
+      <a href="../reference/glossary.html#term-function-calling">Function calling / tool calling</a> 只是模型输出一段结构化请求：
+      “我要调用 <code>query_logs</code>，参数是……”。真正执行的是你的工具层。
+      权限、沙箱、审计、幂等，都必须做在工具层。
+    </p>
+  </div>
+
+  <p>
+    所以 Agent 的第一性原理不是“更聪明的模型”，而是：
+    <strong>模型做决策，代码做执行，循环把两者接起来</strong>。
+    这一课先把“决策”这一次调用讲清楚；第 3 课再把循环接上。
+  </p>
+
+  <h2 id="tokens"><span class="num">02</span>Token 与上下文预算<a class="anchor" href="#tokens">¶</a></h2>
+
+  <p>
+    <a href="../reference/glossary.html#term-token">Token</a> 是模型处理文本的最小单位，不等于字符，也不等于单词。
+    同一个句子，中文、英文、代码的 token 数可能差很多；计费、延迟、上下文长度都以它为单位。
+    Anthropic 的 token counting 文档与 OpenAI 的 tokenizer cookbook 都提供了具体工具，
+    但工程上更重要的是：<strong>把 token 当预算，而不是当事后账单</strong>。
+    <a href="https://docs.anthropic.com/en/docs/build-with-claude/token-counting">Anthropic — Token counting</a> ·
+    <a href="https://cookbook.openai.com/examples/how_to_count_tokens_with_tiktoken">OpenAI — tiktoken</a>
+  </p>
+
+  <p>
+    <a href="../reference/glossary.html#term-context-window">上下文窗口</a>是输入 + 输出共享的上限。
+    一次调用里，预算大致被这些部分吃掉：
+  </p>
+
+  <table>
+    <thead><tr><th>预算项</th><th>典型内容</th><th>工程问题</th></tr></thead>
+    <tbody>
+      <tr><td>System prompt</td><td>角色、约束、输出契约</td><td>太长会挤占证据；太短会缺约束</td></tr>
+      <tr><td>对话历史</td><td>user / assistant / tool 消息</td><td>随轮次增长；需要压缩或截断</td></tr>
+      <tr><td>检索/工具结果</td><td>RAG chunks、日志、指标</td><td>最容易失控；要过滤、截断、去重</td></tr>
+      <tr><td>输出</td><td>答案、JSON、tool_calls</td><td><code>max_tokens</code> 太小会截断；太大会浪费</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    这也是为什么第 5、6 课要讲检索与重排：<strong>不是所有材料都值得进上下文</strong>。
+    Anthropic 把上下文称为“注意力预算”：token 越多，模型对其中信息的利用反而可能越差。
+    <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective Context Engineering</a>
+  </p>
+
+  <pre class="trace">context budget example
+  system prompt        ~ 300 tokens
+  conversation         ~ 1,800 tokens
+  retrieved chunks     ~ 2,400 tokens
+  tool results         ~ 900 tokens
+  reserved for output  ~ 1,000 tokens
+  ---------------------------------
+  total                ~ 6,400 tokens
+
+  if the window is 8k, you have ~1.6k headroom.
+  if the next turn adds 2k of logs, you will overflow.</pre>
+
+  <div class="callout note">
+    <span class="label">Java 对照</span>
+    <p>
+      Token 预算 ≈ 请求体大小 + 响应体大小的硬上限；<code>max_tokens</code> ≈ 响应缓冲区上限；
+      超出预算不是“慢一点”，而是直接失败或被截断。
+    </p>
+  </div>
+
+  <h2 id="sampling"><span class="num">03</span>采样：temperature / top_p<a class="anchor" href="#sampling">¶</a></h2>
+
+  <p>
+    <a href="../reference/glossary.html#term-sampling">采样</a>决定“从概率分布里怎么选下一个 token”。
+    两个最常用的旋钮：
+  </p>
+
+  <ul>
+    <li><strong>temperature</strong>：缩放 logits。越低越接近“选最高概率”，越高分布越平、越随机。</li>
+    <li><strong>top_p</strong>（nucleus sampling）：只保留累计概率最高的一部分 token，再在其中采样。</li>
+  </ul>
+
+  <table>
+    <thead><tr><th>任务</th><th>建议</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td>工具调用 / 结构化抽取</td><td>低温度（0–0.3）</td><td>减少格式漂移与参数幻觉</td></tr>
+      <tr><td>排障结论 / 事实问答</td><td>低到中（0.1–0.4）</td><td>稳定、可复现优先</td></tr>
+      <tr><td>头脑风暴 / 文案</td><td>中到高（0.7–1.0）</td><td>需要多样性</td></tr>
+      <tr><td>需要严格确定性的场景</td><td>不要只靠 temperature=0</td><td>供应商实现、并行、版本都可能带来差异</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <code>temperature=0</code> 通常让模型选最高概率 token，但<strong>不保证跨请求完全一致</strong>：
+    浮点运算、批处理、模型版本、供应商实现都可能影响结果。把“确定性”当成工程目标时，
+    应该用 schema 校验、缓存、幂等和评测，而不是只设一个参数。
+  </p>
+
+  <div class="callout warn">
+    <span class="label">不要同时盲调 temperature 和 top_p</span>
+    <p>
+      两个参数都会改变分布形状，同时调很难归因。先固定一个，用同一组评测样本测另一个；
+      没有评测的“调参”只是感觉。
+    </p>
+  </div>
+
+  <h2 id="structured"><span class="num">04</span>结构化输出<a class="anchor" href="#structured">¶</a></h2>
+
+  <p>
+    <a href="../reference/glossary.html#term-structured-output">结构化输出</a>是把“自然语言回答”变成“可被程序消费的契约”。
+    最可靠的做法不是让模型“尽量返回 JSON”，而是：
+  </p>
+
+  <ol>
+    <li><strong>给 schema</strong>：字段、类型、枚举、必填、是否允许额外字段。</li>
+    <li><strong>让模型按 schema 输出</strong>：JSON mode / structured outputs / function calling。</li>
+    <li><strong>在代码里校验</strong>：不要 <code>json.loads</code> 之后直接用。</li>
+    <li><strong>失败时修复</strong>：把校验错误反馈给模型，重试有限次数；仍失败就降级或转人工。</li>
+  </ol>
+
+  <pre><code>{
+  "type": "object",
+  "properties": {
+    "category": {"type": "string", "enum": ["billing", "technical", "account", "other"]},
+    "priority": {"type": "string", "enum": ["P0", "P1", "P2"]},
+    "summary": {"type": "string"},
+    "needs_human": {"type": "boolean"}
+  },
+  "required": ["category", "priority", "summary", "needs_human"],
+  "additionalProperties": false
+}</code></pre>
+
+  <p>
+    这个 schema 同时是 prompt、接口契约和测试用例。模型输出
+    <code>{"needs_human": "yes"}</code> 时，校验器会拒绝；修复循环会把
+    “needs_human must be a boolean” 发回去。这比在 prompt 里写十遍“请返回布尔值”可靠。
+  </p>
+
+  <div class="callout note">
+    <span class="label">Java 对照</span>
+    <p>
+      Schema ≈ DTO + OpenAPI + Bean Validation；校验失败重试 ≈ 带错误码的 4xx 响应 + 客户端修正；
+      不要把“解析成功”当成“业务合法”。
+    </p>
+  </div>
+
+  <h2 id="protocol"><span class="num">05</span>一次调用的消息协议<a class="anchor" href="#protocol">¶</a></h2>
+
+  <p>
+    无论你用哪家 SDK，Chat Completions 的形状基本一致。理解消息角色，比背 SDK 方法重要：
+  </p>
+
+  <table>
+    <thead><tr><th>角色</th><th>谁产生</th><th>作用</th></tr></thead>
+    <tbody>
+      <tr><td><code>system</code></td><td>你的代码</td><td>角色、约束、输出契约、工具使用规则</td></tr>
+      <tr><td><code>user</code></td><td>用户 / 上游系统</td><td>任务与输入</td></tr>
+      <tr><td><code>assistant</code></td><td>模型</td><td>自然语言回答，或 <code>tool_calls</code> 请求</td></tr>
+      <tr><td><code>tool</code></td><td>你的代码</td><td>工具执行结果，必须用 <code>tool_call_id</code> 配对</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    一次带工具的调用，响应里可能出现：
+  </p>
+
+  <pre class="trace">{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [{
+        "id": "call_abc",
+        "type": "function",
+        "function": {"name": "query_logs", "arguments": "{\"service\":\"order-service\"}"}
+      }]
+    },
+    "finish_reason": "tool_calls"
+  }],
+  "usage": {"prompt_tokens": 412, "completion_tokens": 38, "total_tokens": 450}
+}</pre>
+
+  <p>
+    <code>finish_reason</code> 告诉你这次调用为什么结束：<code>stop</code>（正常）、
+    <code>length</code>（被 max_tokens 截断）、<code>tool_calls</code>（要执行工具）、
+    <code>content_filter</code>（被安全策略拦截）。不处理它，你会把截断当成完整答案。
+  </p>
+
+  <p>
+    流式响应则把文本拆成多个 <code>delta</code>，最后再给一个 <code>done</code> / usage。
+    流式改善的是首 token 延迟与用户体验，不改变 token 总量；不要以为“流式就不占预算”。
+  </p>
+
+  <div class="callout warn">
+    <span class="label">tool_calls 不是执行结果</span>
+    <p>
+      模型返回 <code>tool_calls</code> 后，循环必须暂停：执行工具、把结果作为 <code>tool</code> 消息
+      追加、再用 <code>tool_call_id</code> 配对，发下一次请求。少了配对，API 会直接报错；
+      把“模型说它查了日志”当成证据，则是更隐蔽的错误。
+    </p>
+  </div>
+
+  <h2 id="quiz"><span class="num">06</span>检验一下<a class="anchor" href="#quiz">¶</a></h2>
+
+  <p class="small">先自己想，再点选项。答错会给出解释。</p>
+
+  <div class="quiz" data-quiz>
+    <div class="quiz-q" data-answer="d" data-explain="模型只输出结构化的 tool_calls 请求；真正执行工具的是你的代码。权限、沙箱、审计、幂等都在工具层。">
+      <p class="quiz-prompt">模型在响应里返回 tool_calls 之后，谁执行工具？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>模型在内部自动执行工具</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>模型供应商的数据库执行</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>工具自己决定是否执行</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>你的代码解析请求后执行</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="上下文窗口是输入与输出共享的 token 上限。输入占得多，留给输出的就少；max_tokens 是输出侧的上限。">
+      <p class="quiz-prompt">对上下文窗口的准确理解是哪一个？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>只限制输入 token 的数量</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>输入与输出共享的 token 上限</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>只限制输出 token 的数量</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>等于模型训练数据的总大小</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="c" data-explain="temperature=0 通常选最高概率 token，但不保证跨请求完全一致；模型版本、浮点运算、批处理与供应商实现都会带来差异。">
+      <p class="quiz-prompt">temperature=0 的真正含义是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>保证每次输出完全一致</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>关闭模型的安全过滤</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>降低随机性但不保证确定</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>让模型输出更长的文本</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="a" data-explain="最可靠的工程做法是 schema + 校验 + 失败修复。只在 prompt 里写“请返回 JSON”无法保证结构；截取花括号也会在嵌套或字符串中出错。">
+      <p class="quiz-prompt">结构化输出最可靠的工程做法是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>schema + 校验 + 失败修复</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>只在 prompt 里写“返回 JSON”</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>截取第一个花括号之间的文本</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>让模型自己决定字段</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="d" data-explain="流式响应里 delta 是增量；完整文本与 usage 通常在最后一个 done/usage 事件里。不要在每个 delta 上重复统计 token。">
+      <p class="quiz-prompt">流式响应里，完整文本和 usage 通常何时拿到？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>每个 delta 都带完整文本与 usage</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>请求发出之前就能拿到</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>只能通过第二次请求获取</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>最后一个 done / usage 事件</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-score" aria-live="polite"></div>
+  </div>
+
+  <h2 id="lab"><span class="num">07</span>Lab：流式 client + 修复循环<a class="anchor" href="#lab">¶</a></h2>
+
+  <p>
+    代码在 <a href="../labs/0001-llm-client/">labs/0001-llm-client/</a>。
+    它只有两个文件要读：<code>llm_client.py</code> 与 <code>structured.py</code>。
+  </p>
+
+  <h3>Step 1 · 跑测试（5 分钟）</h3>
+  <pre><code>cd labs/0001-llm-client
+python3 -m unittest -v</code></pre>
+  <p>
+    20 个测试覆盖消息构建、流式 delta/done、usage、JSON 解析、schema 校验与修复循环。
+    不需要 API key。
+  </p>
+
+  <h3>Step 2 · 看流式事件（5 分钟）</h3>
+  <pre><code>python3 llm_client.py --demo</code></pre>
+  <p>
+    观察每个 <code>delta</code> 只是增量；最后 <code>done</code> 才带完整文本与 usage。
+    把 <code>usage</code> 与 <code>estimate_tokens</code> 对比，理解“估算”与“账单”的差别。
+  </p>
+
+  <h3>Step 3 · 看修复循环（10 分钟）</h3>
+  <pre><code>python3 structured.py --demo</code></pre>
+  <p>
+    第一次输出把 <code>needs_human</code> 写成字符串，校验失败；错误被反馈给模型；
+    第二次输出合法。这个循环就是生产里处理结构化输出的最小闭环。
+  </p>
+
+  <h3>Step 4 · 接真实模型（15 分钟，可选）</h3>
+  <pre><code>cp .env.example .env
+# 填写 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL
+
+python3 llm_client.py --live --prompt "用一句话解释 token 预算。"
+python3 structured.py --live --ticket "生产环境订单服务大量 500，用户无法下单。"</code></pre>
+  <p>
+    不同 OpenAI-compatible 端点对 <code>stream_options</code> 与 <code>response_format</code>
+    的支持不同；如果报错，先确认端点能力，再决定是否降级。
+  </p>
+
+  <h3>Step 5 · 改 schema（10 分钟）</h3>
+  <p>
+    给 <code>TICKET_SCHEMA</code> 增加 <code>confidence: number</code>，
+    同步更新校验与测试；再把 <code>max_repairs</code> 改成 0，观察非法输出如何直接失败。
+  </p>
+
+  <h3>成功标准</h3>
+  <ul class="checklist" data-persist="lesson1-lab">
+    <li><label><input type="checkbox"><span>20 个测试全绿</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 delta / done / usage 的关系</span></label></li>
+    <li><label><input type="checkbox"><span>能说出 context window 与 max_tokens 的区别</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 temperature=0 为什么不等于绝对确定</span></label></li>
+    <li><label><input type="checkbox"><span>能指出修复循环在什么情况下应该停止</span></label></li>
+  </ul>
+
+  <h2 id="java"><span class="num">08</span>和 Java 后端对照<a class="anchor" href="#java">¶</a></h2>
+
+  <table>
+    <thead><tr><th>LLM 概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>token budget</td><td>请求体 / 响应体大小上限</td></tr>
+      <tr><td><code>max_tokens</code></td><td>响应缓冲区上限</td></tr>
+      <tr><td>temperature / top_p</td><td>重试抖动 / 负载均衡随机性</td></tr>
+      <tr><td>JSON schema</td><td>DTO + OpenAPI + Bean Validation</td></tr>
+      <tr><td><code>tool_calls</code></td><td>RPC 请求（不是执行结果）</td></tr>
+      <tr><td>修复循环</td><td>带错误码的 4xx + 客户端修正 + 有限重试</td></tr>
+      <tr><td>流式响应</td><td>SSE / chunked response</td></tr>
+      <tr><td>usage</td><td>metrics / 成本账本</td></tr>
+      <tr><td><code>finish_reason=length</code></td><td>响应被截断 / 413 类错误</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    最大的认知转变是：<strong>模型是一个纯函数式的概率组件，不是一个服务。</strong>
+    它没有副作用、没有记忆、不会执行；所有可靠性都来自你包在它外面的协议、校验与循环。
+  </p>
+
+  <div class="source-card">
+    <div class="label">本课精读</div>
+    <h3>OpenAI — Text generation</h3>
+    <p>
+      读消息角色、temperature/top_p、max_tokens、流式与 structured outputs 几节（约 15 分钟）。
+      重点不是 API 参数表，而是“一次调用由哪些部分组成、哪些部分会失败”。
+    </p>
+    <p><a href="https://platform.openai.com/docs/guides/text-generation">platform.openai.com/docs/guides/text-generation</a></p>
+    <p class="small">
+      选读：<a href="https://docs.anthropic.com/en/docs/build-with-claude/token-counting">Anthropic — Token counting</a> ·
+      <a href="https://platform.openai.com/docs/guides/structured-outputs">OpenAI — Structured Outputs</a> ·
+      <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective Context Engineering</a>
+    </p>
+  </div>
+
+  <p class="small center no-print">
+    打印版：<a href="../reference/llm-client-checklist.html">LLM 调用清单</a> ·
+    设计 client、schema 与重试时逐项过一遍。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">卡住了？</span>
+    <p>
+      回到终端问你的老师：“第 1 课里为什么 temperature=0 仍可能不一致？”
+      或者把 <code>structured.py --demo</code> 的两次输出贴过来，我们一起看修复循环。
+    </p>
+  </div>
+
+  <p class="small center no-print" style="margin-top:2.2rem;">
+    下一课：上下文工程——system prompt、few-shot 与输出契约，把单次抽取变成可评测的分类器。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="../reference/course-roadmap.html">课程路线图</a>
+    <a href="../reference/glossary.html">术语表</a>
+    <span class="next disabled">第 2 课：上下文工程（即将解锁）</span>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>
