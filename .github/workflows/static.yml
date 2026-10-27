@@ -39,6 +39,7 @@ jobs:
           cp -r lessons _site/lessons
           cp -r assets _site/assets
           cp -r reference _site/reference
+          cp MISSION.md _site/MISSION.md
       - name: Generate index.html
         run: |
           cat > _site/index.html <<'EOF'
@@ -46,11 +47,11 @@ jobs:
           <html lang="zh-CN">
           <head>
             <meta charset="UTF-8">
-            <meta http-equiv="refresh" content="0; url=lessons/0001-agent-loop.html">
-            <title>跳转中...</title>
+            <meta http-equiv="refresh" content="0; url=reference/course-roadmap.html">
+            <title>AI Agent 转型课 跳转中...</title>
           </head>
           <body>
-            <p>正在跳转到 <a href="lessons/0001-agent-loop.html">Lesson 0001 《Agent 循环：所有框架背后，都是这 30 行代码》</a>...</p>
+            <p>正在跳转到 <a href="reference/course-roadmap.html">《课程线路图 ：4 周，从 Java 后端到 Agent 工程师》</a>...</p>
           </body>
           </html>
           EOF
