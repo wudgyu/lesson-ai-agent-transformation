@@ -44,7 +44,7 @@
 - 第 5 课的核心观察：离线 `vector(lexical)` 只是词面向量，不能证明语义检索的收益；真实结论要等用户配置 embedding 后跑 dense/hybrid。
 - 第 6 课的核心观察：`fixtures` 只验证 checker，不代表模型能力；真实答案级结论必须跑 `--backend llm`。A09 是 quote containment 的盲区，需要 NLI / LLM judge / 人工审计。
 - 第 7 课的核心观察：`none`（硬截断）能答对最终问题但丢掉最初约束；compaction 能保住约束，但默认 0.70/keep4 会压缩 8 次（thrash），调到 0.90/keep2 后只压 2 次、峰值上升但最终 tokens 更低。长期记忆改变第一个工具（health → runbook）；旧记忆 40 被新证据 50 supersede；resume 后副作用不重复。
-- 已修复 `reference/course-roadmap.html` 中第 3、4 课（D5/D6）的缺失链接，并补上第 6 课入口。
+- 已补 D1/D2 作为 Lesson 0001/0002，并把原 L1–L5 顺延为 L3–L7；roadmap、labs、glossary 与所有交叉链接已同步。
 
 ## 待确认
 
