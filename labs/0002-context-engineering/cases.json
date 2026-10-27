@@ -1,0 +1,162 @@
+[
+  {
+    "id": "T01",
+    "ticket": "生产环境订单服务大量 500，所有用户都无法下单，麻烦尽快处理。",
+    "expected_category": "technical",
+    "expected_priority": "P0",
+    "expected_needs_human": true,
+    "note": "生产不可用，典型 P0。"
+  },
+  {
+    "id": "T02",
+    "ticket": "发票抬头写错了，能重开吗？",
+    "expected_category": "billing",
+    "expected_priority": "P2",
+    "expected_needs_human": false,
+    "note": "非阻塞账单问题。"
+  },
+  {
+    "id": "T03",
+    "ticket": "忘记密码了，而且原来的邮箱已经不用了，现在登不进去。",
+    "expected_category": "account",
+    "expected_priority": "P1",
+    "expected_needs_human": true,
+    "note": "邮箱变更需要人工验证。"
+  },
+  {
+    "id": "T04",
+    "ticket": "App 一打开就闪退，iOS 和 Android 都这样。",
+    "expected_category": "technical",
+    "expected_priority": "P1",
+    "expected_needs_human": false,
+    "note": "核心功能受阻，但非生产全挂。"
+  },
+  {
+    "id": "T05",
+    "ticket": "如何导出上季度的账单明细？",
+    "expected_category": "billing",
+    "expected_priority": "P2",
+    "expected_needs_human": false,
+    "note": "一般咨询。"
+  },
+  {
+    "id": "T06",
+    "ticket": "想升级企业版，怎么收费？",
+    "expected_category": "billing",
+    "expected_priority": "P2",
+    "expected_needs_human": false,
+    "note": "销售/账单咨询。"
+  },
+  {
+    "id": "T07",
+    "ticket": "账号被锁了，下午还要给客户演示，很急。",
+    "expected_category": "account",
+    "expected_priority": "P1",
+    "expected_needs_human": true,
+    "note": "账号问题有明确业务影响。"
+  },
+  {
+    "id": "T08",
+    "ticket": "数据库连接池满了，order-service 大量超时。",
+    "expected_category": "technical",
+    "expected_priority": "P0",
+    "expected_needs_human": true,
+    "note": "生产故障。"
+  },
+  {
+    "id": "T09",
+    "ticket": "退款一般多久到账？",
+    "expected_category": "billing",
+    "expected_priority": "P2",
+    "expected_needs_human": false,
+    "note": "一般咨询。"
+  },
+  {
+    "id": "T10",
+    "ticket": "调用 API 一直返回 401，token 是新生成的。",
+    "expected_category": "technical",
+    "expected_priority": "P1",
+    "expected_needs_human": false,
+    "note": "接口鉴权问题。"
+  },
+  {
+    "id": "T11",
+    "ticket": "公司名称变更了，需要修改合同主体和发票信息。",
+    "expected_category": "account",
+    "expected_priority": "P1",
+    "expected_needs_human": true,
+    "note": "涉及合同主体，必须人工。"
+  },
+  {
+    "id": "T12",
+    "ticket": "服务器磁盘使用率 95%，一直在告警。",
+    "expected_category": "technical",
+    "expected_priority": "P0",
+    "expected_needs_human": true,
+    "note": "基础设施高风险。"
+  },
+  {
+    "id": "T13",
+    "ticket": "订阅的自动续费能关掉吗？",
+    "expected_category": "billing",
+    "expected_priority": "P2",
+    "expected_needs_human": false,
+    "note": "账单设置。"
+  },
+  {
+    "id": "T14",
+    "ticket": "双因素认证的手机丢了，现在没有备用码。",
+    "expected_category": "account",
+    "expected_priority": "P1",
+    "expected_needs_human": true,
+    "note": "身份验证需要人工。"
+  },
+  {
+    "id": "T15",
+    "ticket": "日志里大量 timeout，payment-service 的 p99 已经 5 秒。",
+    "expected_category": "technical",
+    "expected_priority": "P0",
+    "expected_needs_human": true,
+    "note": "生产性能故障。"
+  },
+  {
+    "id": "T16",
+    "ticket": "发票邮寄地址需要修改，改成新的办公室地址。",
+    "expected_category": "billing",
+    "expected_priority": "P2",
+    "expected_needs_human": false,
+    "note": "非阻塞账单信息修改。"
+  },
+  {
+    "id": "T17",
+    "ticket": "新员工入职，需要开通一个普通账号。",
+    "expected_category": "account",
+    "expected_priority": "P2",
+    "expected_needs_human": false,
+    "note": "常规账号开通。"
+  },
+  {
+    "id": "T18",
+    "ticket": "用户支付成功，但订单没有生成，已经有几十笔。",
+    "expected_category": "technical",
+    "expected_priority": "P0",
+    "expected_needs_human": true,
+    "note": "资金/订单受影响。"
+  },
+  {
+    "id": "T19",
+    "ticket": "想了解一下你们的企业版 SLA 是多少。",
+    "expected_category": "other",
+    "expected_priority": "P2",
+    "expected_needs_human": false,
+    "note": "售前咨询，归 other。"
+  },
+  {
+    "id": "T20",
+    "ticket": "明天上午有路演，系统必须保持可用，今晚能不能做一次检查？",
+    "expected_category": "technical",
+    "expected_priority": "P0",
+    "expected_needs_human": true,
+    "note": "高 stakes 时间点，需要人工确认。"
+  }
+]

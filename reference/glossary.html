@@ -79,7 +79,11 @@
         <tr id="term-json-schema"><td>JSON Schema</td><td>描述 JSON 结构、类型、枚举、必填字段的契约。用于结构化输出、工具参数与校验。</td><td>W1 L1</td></tr>
         <tr id="term-streaming"><td>流式响应<span class="en">streaming</span></td><td>模型把输出拆成增量 delta 返回，最后给完整文本与 usage。改善首 token 延迟，不改变总 token 成本。</td><td>W1 L1</td></tr>
         <tr id="term-repair-loop"><td>修复循环<span class="en">repair loop</span></td><td>结构化输出校验失败时，把错误反馈给模型并重试有限次数；仍失败则降级或转人工。</td><td>W1 L1</td></tr>
-        <tr id="term-context-rot"><td>上下文腐化<span class="en">context rot</span></td><td>上下文越长，模型对其中信息的利用越差。不是“塞得越多越好”，需要裁剪、压缩与检索。</td><td>W2</td></tr>
+        <tr id="term-context-engineering"><td>上下文工程<span class="en">context engineering</span></td><td>决定这次调用看到哪些信息、以什么结构/顺序呈现：指令、证据、示例、契约、边界与预算。包含 prompt engineering。</td><td>W1 L2</td></tr>
+        <tr id="term-system-prompt"><td>System prompt</td><td>系统级指令：角色、目标、约束、输出契约、工具策略与数据边界。用户输入不应拼进 system。</td><td>W1 L2</td></tr>
+        <tr id="term-few-shot"><td>少样本示例<span class="en">few-shot</span></td><td>在 prompt 中给出若干输入/输出示例，主要教格式、边界与标签口径，不是可靠的知识注入。</td><td>W1 L2</td></tr>
+        <tr id="term-output-contract"><td>输出契约<span class="en">output contract</span></td><td>对输出结构、类型、枚举、必填与拒答行为的明确约定；必须由代码校验，而不只是 prompt 建议。</td><td>W1 L2</td></tr>
+        <tr id="term-context-rot"><td>上下文腐化<span class="en">context rot</span></td><td>上下文越长，模型对其中信息的利用越差。不是“塞得越多越好”，需要裁剪、压缩与检索。</td><td>W1 L2 · W1 L5</td></tr>
       </tbody>
     </table>
   </div>
@@ -177,8 +181,8 @@
         <tr id="term-observability"><td>可观测性<span class="en">observability</span></td><td>通过日志、指标、trace 回答“系统现在发生了什么、为什么”。Agent 的非确定性让它比传统服务更重要。</td><td>W3 D17</td></tr>
         <tr id="term-guardrail"><td>护栏<span class="en">guardrail</span></td><td>在输入、输出或工具调用前后执行的校验与限制，用于拦截不安全内容、越权操作与格式错误。</td><td>W2/W3</td></tr>
         <tr id="term-least-privilege"><td>最小权限<span class="en">least privilege</span></td><td>只给 Agent 完成任务所需的最小工具与数据权限。写操作应默认拒绝，审批后放行。</td><td>W1 L4</td></tr>
-        <tr id="term-prompt-injection"><td>提示词注入<span class="en">prompt injection</span></td><td>攻击者把恶意指令藏在网页、文档、工具返回中，诱导 Agent 偏离原任务或泄露信息。Agent 安全的核心威胁。</td><td>W3 D18</td></tr>
-        <tr id="term-token-budget"><td>Token 预算<span class="en">token budget</span></td><td>为单次任务设定的 token/成本上限。Agent 循环会放大成本，必须在设计时就设预算与降级策略。</td><td>W3 D17</td></tr>
+        <tr id="term-prompt-injection"><td>提示词注入<span class="en">prompt injection</span></td><td>攻击者把恶意指令藏在网页、文档、工具返回中，诱导 Agent 偏离原任务或泄露信息。Agent 安全的核心威胁。</td><td>W1 L2 · W3 D18</td></tr>
+        <tr id="term-token-budget"><td>Token 预算<span class="en">token budget</span></td><td>为单次任务设定的 token/成本上限。Agent 循环会放大成本，必须在设计时就设预算与降级策略。</td><td>W1 L1 · W3 D17</td></tr>
       </tbody>
     </table>
   </div>

@@ -1,0 +1,85 @@
+{
+  "_meta": {
+    "description": "Scripted first-pass outputs. Baseline contains deliberate schema/classification errors; engineered is correct. This is a prompt-design demonstration, not a model evaluation."
+  },
+  "T01": {
+    "baseline": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"订单服务生产故障，用户无法下单\",\"needs_human\":true}",
+    "engineered": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"订单服务生产故障，用户无法下单\",\"needs_human\":true}"
+  },
+  "T02": {
+    "baseline": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"发票抬头错误，需要重开\",\"needs_human\":false}",
+    "engineered": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"发票抬头错误，需要重开\",\"needs_human\":false}"
+  },
+  "T03": {
+    "baseline": "{\"category\":\"account\",\"priority\":\"P1\",\"summary\":\"忘记密码且邮箱变更\",\"needs_human\":\"yes\"}",
+    "engineered": "{\"category\":\"account\",\"priority\":\"P1\",\"summary\":\"忘记密码且邮箱变更，需要人工验证\",\"needs_human\":true}"
+  },
+  "T04": {
+    "baseline": "{\"category\":\"account\",\"priority\":\"P1\",\"summary\":\"App 闪退\",\"needs_human\":false}",
+    "engineered": "{\"category\":\"technical\",\"priority\":\"P1\",\"summary\":\"App 在 iOS 和 Android 上闪退\",\"needs_human\":false}"
+  },
+  "T05": {
+    "baseline": "{\"category\":\"billing\",\"summary\":\"导出上季度账单\",\"needs_human\":false}",
+    "engineered": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"导出上季度账单明细\",\"needs_human\":false}"
+  },
+  "T06": {
+    "baseline": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"咨询企业版收费\",\"needs_human\":false}",
+    "engineered": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"咨询企业版收费\",\"needs_human\":false}"
+  },
+  "T07": {
+    "baseline": "{\"category\":\"account\",\"priority\":\"P2\",\"summary\":\"账号被锁，急需演示\",\"needs_human\":true}",
+    "engineered": "{\"category\":\"account\",\"priority\":\"P1\",\"summary\":\"账号被锁，影响客户演示\",\"needs_human\":true}"
+  },
+  "T08": {
+    "baseline": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"数据库连接池耗尽\",\"needs_human\":true}",
+    "engineered": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"数据库连接池耗尽导致超时\",\"needs_human\":true}"
+  },
+  "T09": {
+    "baseline": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"咨询退款到账时间\",\"needs_human\":false}",
+    "engineered": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"咨询退款到账时间\",\"needs_human\":false}"
+  },
+  "T10": {
+    "baseline": "这是一张技术工单，建议转技术团队处理。",
+    "engineered": "{\"category\":\"technical\",\"priority\":\"P1\",\"summary\":\"API 返回 401，token 为新生成\",\"needs_human\":false}"
+  },
+  "T11": {
+    "baseline": "{\"category\":\"billing\",\"priority\":\"P1\",\"summary\":\"公司名称变更\",\"needs_human\":true}",
+    "engineered": "{\"category\":\"account\",\"priority\":\"P1\",\"summary\":\"公司名称变更，需修改合同主体\",\"needs_human\":true}"
+  },
+  "T12": {
+    "baseline": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"服务器磁盘告警\",\"needs_human\":true}",
+    "engineered": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"服务器磁盘使用率 95% 持续告警\",\"needs_human\":true}"
+  },
+  "T13": {
+    "baseline": "{\"category\":\"billing\",\"priority\":\"high\",\"summary\":\"关闭自动续费\",\"needs_human\":false}",
+    "engineered": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"关闭订阅自动续费\",\"needs_human\":false}"
+  },
+  "T14": {
+    "baseline": "{\"category\":\"account\",\"priority\":\"P1\",\"summary\":\"双因素认证设备丢失\",\"needs_human\":true}",
+    "engineered": "{\"category\":\"account\",\"priority\":\"P1\",\"summary\":\"双因素认证设备丢失且无备用码\",\"needs_human\":true}"
+  },
+  "T15": {
+    "baseline": "{\"category\":\"technical\",\"priority\":\"P1\",\"summary\":\"payment-service 超时\",\"needs_human\":true}",
+    "engineered": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"payment-service p99 5 秒，大量 timeout\",\"needs_human\":true}"
+  },
+  "T16": {
+    "baseline": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"修改发票邮寄地址\",\"needs_human\":false}",
+    "engineered": "{\"category\":\"billing\",\"priority\":\"P2\",\"summary\":\"修改发票邮寄地址\",\"needs_human\":false}"
+  },
+  "T17": {
+    "baseline": "{\"category\":\"account\",\"priority\":\"P2\",\"summary\":\"新员工账号开通\",\"needs_human\":false}",
+    "engineered": "{\"category\":\"account\",\"priority\":\"P2\",\"summary\":\"新员工普通账号开通\",\"needs_human\":false}"
+  },
+  "T18": {
+    "baseline": "{\"category\":\"billing\",\"priority\":\"P0\",\"summary\":\"支付成功但订单未生成\",\"needs_human\":true}",
+    "engineered": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"支付成功但订单未生成，影响数十笔\",\"needs_human\":true}"
+  },
+  "T19": {
+    "baseline": "{\"category\":\"technical\",\"priority\":\"P2\",\"summary\":\"咨询 SLA\",\"needs_human\":false}",
+    "engineered": "{\"category\":\"other\",\"priority\":\"P2\",\"summary\":\"咨询企业版 SLA\",\"needs_human\":false}"
+  },
+  "T20": {
+    "baseline": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"路演前系统检查\",\"needs_human\":true}",
+    "engineered": "{\"category\":\"technical\",\"priority\":\"P0\",\"summary\":\"路演前系统可用性检查\",\"needs_human\":true}"
+  }
+}
