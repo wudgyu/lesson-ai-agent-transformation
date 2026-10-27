@@ -1,9 +1,26 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-10-25。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-10-27。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
+
+### 状态、记忆与上下文工程
+
+- [Anthropic — Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+  **第 5 课精读**。context rot、attention budget、compaction（保留决策/未解决 bug/实现细节，丢弃冗余工具输出）、structured note-taking、sub-agent。
+- [LangGraph — Memory](https://docs.langchain.com/oss/python/langgraph/memory)
+  短期记忆 = thread-scoped state + checkpointer；长期记忆 = 跨会话 namespace/store；semantic / episodic / procedural；热路径 vs 后台写入。
+- [OpenAI Agents SDK — Sessions](https://openai.github.io/openai-agents-python/sessions/)
+  Session 自动维护对话历史；`session_input_callback` 裁剪历史；SQLite / Redis / SQLAlchemy / MongoDB 等实现；`pop_item` 纠正。
+- [Sumers et al. — Cognitive Architectures for Language Agents (CoALA, arXiv:2309.02427)](https://arxiv.org/abs/2309.02427)
+  工作记忆、情景记忆、语义记忆、程序记忆的模块化分类，以及结构化动作空间与决策过程。
+- [Packer et al. — MemGPT (arXiv:2310.08560)](https://arxiv.org/abs/2310.08560)
+  虚拟上下文管理：把主上下文当 RAM、外部存储当磁盘，通过分页/换入换出扩展可用记忆。
+- [Park et al. — Generative Agents (arXiv:2304.03442)](https://arxiv.org/abs/2304.03442)
+  memory stream + reflection；按 recency / importance / relevance 动态检索记忆。
+- [LangChain — Context Engineering for Agents](https://blog.langchain.com/context-engineering-for-agents/)
+  write / select / compress / isolate 四个动作；context poisoning / distraction / confusion / clash。
 
 ### 检索与 RAG
 
@@ -44,8 +61,6 @@
 
 - [Anthropic — Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents)
   最重要的起点。区分 workflow 与 agent，给出 5 种 workflow 模式、agent 的适用边界、ACI 工具设计原则。**第 1 周精读**。
-- [Anthropic — Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
-  把上下文当预算：context rot、system prompt 的「正确高度」、compaction、结构化笔记、sub-agent。**第 2 周精读**。
 - [Anthropic — Writing Effective Tools for Agents](https://www.anthropic.com/engineering/writing-tools-for-agents)
   工具设计的 5 条原则：少而好、命名空间、返回语义化上下文、token 效率、把 description 当 prompt。**第 2 周精读**。
 - [Anthropic — How We Built Our Multi-Agent Research System](https://www.anthropic.com/engineering/multi-agent-research-system)

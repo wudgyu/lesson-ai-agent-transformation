@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>状态与记忆清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.85rem 1rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+  .check-card h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.22rem 0; }
+  .check-grid + h2 { margin-top: 2.4rem; }
+  @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+  .mini-table td:first-child { white-space: nowrap; font-family: var(--mono); font-size: 0.76rem; }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>状态与记忆清单</h1>
+  <p class="subtitle">Context 是视图，State 是工作台，Memory 是仓库。</p>
+  <div class="meta">
+    <span>首次建立 2026-10-27</span>
+    <span>配套 Lesson 0005</span>
+    <span>State · Compaction · Memory · Resume</span>
+    <span>可打印</span>
+  </div>
+
+  <p class="lede">
+    长任务出问题，通常不是模型“忘了”，而是状态没有写下来、压缩丢了关键信息、
+    记忆没有写入策略，或者恢复后重复执行了副作用。这份清单把这几件事压成一页。
+  </p>
+
+  <h2 id="layers"><span class="num">01</span>三层区分</h2>
+
+  <table>
+    <thead><tr><th></th><th>Context</th><th>State</th><th>Memory</th></tr></thead>
+    <tbody>
+      <tr><td>作用域</td><td>这一次模型调用</td><td>这次任务 / 会话</td><td>跨会话 / 跨任务</td></tr>
+      <tr><td>存储</td><td>上下文窗口</td><td>内存对象 + checkpoint</td><td>外部 store</td></tr>
+      <tr><td>内容</td><td>系统提示、任务、检索结果、最近消息</td><td>事实、决策、未解决问题、副作用</td><td>偏好、事故经验、流程规则</td></tr>
+      <tr><td>失败</td><td>溢出 / 污染 / context rot</td><td>丢事实 / 重复副作用</td><td>过期 / 错误 / 隐私</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="state"><span class="num">02</span>State 设计检查</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>必须有的字段</h4>
+      <ul>
+        <li>messages（原始记录）</li>
+        <li>facts（key → value + source + confidence）</li>
+        <li>decisions / constraints</li>
+        <li>open questions</li>
+        <li>side effects（幂等键）</li>
+        <li>phase / turn / budget</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>事实与冲突</h4>
+      <ul>
+        <li>每条事实都有来源，不能只有值</li>
+        <li>同 key 新值覆盖旧值，旧值标记 superseded</li>
+        <li>保留 fact history 以便审计</li>
+        <li>来源不同置信度不同；冲突时按来源 + 置信度裁决</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>副作用</h4>
+      <ul>
+        <li>写操作必须有幂等键（如 service + approval_id）</li>
+        <li>执行前检查、执行后记录</li>
+        <li>只读工具可重放；写工具不可重放</li>
+        <li>side effects 必须进 checkpoint</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>更新方式</h4>
+      <ul>
+        <li>消息 append；事实按 key merge；问题去重</li>
+        <li>不要让模型直接覆盖整个 state</li>
+        <li>每次更新后 estimate tokens</li>
+        <li>状态对象可序列化、可版本化</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="compaction"><span class="num">03</span>Compaction 检查</h2>
+
+  <ul class="checklist">
+    <li><label><input type="checkbox"><span><strong>何时压缩</strong>：接近预算阈值（70–90%）、轮次上限、进入昂贵步骤前；不要等溢出。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>保留任务与约束</strong>：第一条 user 消息、明确的“不要做 X”、验收标准。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>保留事实</strong>：key/value/source/confidence；不要只留自然语言描述。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>保留决策与未解决问题</strong>：这是 resume 后继续工作的锚点。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>保留最近证据</strong>：最近 1–3 条工具结论；旧的原始输出可以清掉。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>丢弃冗余</strong>：重复日志、寒暄、已被 supersede 的旧事实、完整推理链。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>结构化摘要</strong>：固定 schema，便于测试与人工审计；不要自由发挥。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>压缩次数</strong>：把 compactions 当指标；太高说明阈值/keep_recent 需要调。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>测保留率</strong>：压缩后期望事实、约束、未解决问题是否还在；不要只看 token 下降。</span></label></li>
+  </ul>
+
+  <div class="callout warn">
+    <span class="label">压缩是有损的</span>
+    <p>
+      “摘要看起来不错”不等于没丢信息。先最大化 recall（保留所有关键事实），再优化 precision（去掉噪音）。
+      对高风险任务，保留原始 trace 供审计，但不要把 trace 塞回上下文。
+    </p>
+  </div>
+
+  <h2 id="memory"><span class="num">04</span>Long-term memory 检查</h2>
+
+  <table>
+    <thead><tr><th>类型</th><th>存什么</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>Semantic</td><td>事实、偏好、概念</td><td>用户希望先看 runbook</td></tr>
+      <tr><td>Episodic</td><td>过去的事件、动作序列</td><td>上次连接池事故的处置</td></tr>
+      <tr><td>Procedural</td><td>规则、流程、怎么做事</td><td>回滚必须审批</td></tr>
+    </tbody>
+  </table>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>写入策略</h4>
+      <ul>
+        <li>显式“记住”优先；隐式提取要置信度阈值</li>
+        <li>热路径写入（实时、可解释）vs 后台写入（不阻塞）</li>
+        <li>去重；同一偏好不产生多条</li>
+        <li>TTL / 保留策略 / 删除接口</li>
+        <li>provenance、confidence、tags</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>读取策略</h4>
+      <ul>
+        <li>相关性 + 时近性 + 重要性</li>
+        <li>注入时带 memory ID 与来源</li>
+        <li>记忆不是真值：冲突时让新证据覆盖</li>
+        <li>检索不到时不要硬编；保持空</li>
+        <li>权限与租户隔离</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="label">记忆投毒与隐私</span>
+    <p>
+      记忆是跨会话的数据资产。攻击者可能通过一次对话写入恶意偏好；用户也可能不希望某些信息被长期保留。
+      写入前就要有来源、置信度、TTL 与删除策略，读取时不要把记忆当系统指令执行。
+    </p>
+  </div>
+
+  <h2 id="resume"><span class="num">05</span>Checkpoint / resume 检查</h2>
+
+  <ul class="checklist">
+    <li><label><input type="checkbox"><span><strong>每步之后 checkpoint</strong>：至少在每个工具调用与最终答案后。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>state 完整</strong>：消息、事实、决策、未解决问题、副作用、预算、phase。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>副作用幂等</strong>：写工具用 business key，而不是随机 request ID。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>恢复不重放</strong>：只读工具可重放；写工具检查 side_effects 后跳过。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>恢复测试</strong>：模拟崩溃，验证事实还在、未解决问题还在、副作用不重复。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>版本兼容</strong>：state schema 变更时能读旧 checkpoint，或明确拒绝。</span></label></li>
+  </ul>
+
+  <h2 id="metrics"><span class="num">06</span>指标速查</h2>
+
+  <table>
+    <thead><tr><th>指标</th><th>回答的问题</th></tr></thead>
+    <tbody>
+      <tr><td>Task success</td><td>最终答案是否包含期望事实</td></tr>
+      <tr><td>Prompt / fact retention</td><td>压缩/恢复后任务约束与关键事实是否还在</td></tr>
+      <tr><td>Peak / final tokens</td><td>上下文预算是否受控</td></tr>
+      <tr><td>Compaction count</td><td>压缩是否抖动</td></tr>
+      <tr><td>Memory hit</td><td>跨会话偏好是否被检索到并改变行为</td></tr>
+      <tr><td>Stale handling</td><td>旧记忆是否被新证据正确覆盖</td></tr>
+      <tr><td>Resume success</td><td>崩溃恢复后事实与未解决问题是否还在</td></tr>
+      <tr><td>Duplicate side effects</td><td>恢复后是否重复执行写操作</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="failures"><span class="num">07</span>失败归因表</h2>
+
+  <table>
+    <thead><tr><th>你看到的</th><th>先怀疑</th><th>先做什么</th></tr></thead>
+    <tbody>
+      <tr><td>长会话最后忘了最初约束</td><td>硬截断丢了第一条 user 消息</td><td>压缩时显式保留任务/约束；测 prompt_retained</td></tr>
+      <tr><td>压缩次数异常高</td><td>阈值太低 / keep_recent 太大</td><td>调高 threshold，减小 keep_recent；看峰值与最终 tokens</td></tr>
+      <tr><td>压缩后答案变差</td><td>摘要丢了事实或决策</td><td>用结构化 facts/decisions 生成摘要；测 fact retention</td></tr>
+      <tr><td>跨会话偏好没生效</td><td>写入策略没记 / 检索没命中</td><td>加 tags 与显式写入；测第一个工具是否改变</td></tr>
+      <tr><td>旧值覆盖新值</td><td>记忆被当真理 / 没 supersede</td><td>新证据优先，旧值标记 superseded</td></tr>
+      <tr><td>resume 后重复重启</td><td>没有幂等键 / 没持久化 side effects</td><td>用 business key；checkpoint 记录副作用</td></tr>
+      <tr><td>上下文频繁溢出</td><td>没有压缩 / 工具结果太大</td><td>tool result clearing + compaction + 预算告警</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="snippets"><span class="num">08</span>最小代码片段</h2>
+
+  <h3>State 与事实冲突</h3>
+  <pre><code>def set_fact(state, key, value, source, confidence):
+    old = state.facts.get(key)
+    if old and old.value != value:
+        old.status = "superseded"
+        state.fact_history.append(old)
+    state.facts[key] = Fact(key, value, source, confidence)</code></pre>
+
+  <h3>结构化压缩</h3>
+  <pre><code>summary = "\n".join([
+    "## Confirmed facts",
+    *["- %s = %s (%s)" % (k, f.value, f.source) for k, f in sorted(state.facts.items())],
+    "## Decisions",
+    *["- " + d for d in state.decisions],
+    "## Open questions",
+    *["- " + q for q in state.open_questions],
+])</code></pre>
+
+  <h3>幂等副作用</h3>
+  <pre><code>key = "restart:%s:%s" % (service, approval_id)
+if state.has_side_effect(key):
+    return {"status": "noop"}
+state.record_side_effect(key)
+return do_restart(service)</code></pre>
+
+  <div class="source-card">
+    <div class="label">出处</div>
+    <h3>本清单的依据</h3>
+    <p>
+      Anthropic — <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective Context Engineering</a> ·
+      LangGraph — <a href="https://docs.langchain.com/oss/python/langgraph/memory">Memory</a> ·
+      OpenAI Agents SDK — <a href="https://openai.github.io/openai-agents-python/sessions/">Sessions</a> ·
+      Sumers et al. — <a href="https://arxiv.org/abs/2309.02427">CoALA</a> ·
+      Packer et al. — <a href="https://arxiv.org/abs/2310.08560">MemGPT</a> ·
+      Park et al. — <a href="https://arxiv.org/abs/2304.03442">Generative Agents</a>
+    </p>
+  </div>
+
+  <nav class="footer-nav">
+    <a href="../lessons/0005-state-memory.html">← 第 5 课：状态与记忆</a>
+    <a href="course-roadmap.html">课程路线图</a>
+    <a class="next" href="glossary.html">术语表 →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

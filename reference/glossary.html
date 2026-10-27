@@ -124,8 +124,16 @@
         <tr id="term-abstention"><td>拒答<span class="en">abstention</span></td><td>证据不足时明确说“不知道/证据不足”，而不是硬答。是 RAG 系统可信度的一部分，需要单独评测。</td><td>W1 L4</td></tr>
         <tr id="term-missing-content"><td>缺失内容<span class="en">missing content</span></td><td>RAG 失败点 FP1：问题所需的信息不在语料里，系统却仍然生成答案。正确行为是拒答或补数据。</td><td>W1 L4</td></tr>
         <tr id="term-lost-in-middle"><td>中间遗忘<span class="en">lost in the middle</span></td><td>长上下文中，位于中间的信息更容易被模型忽略。重排后也要注意把最强证据放在开头或结尾。</td><td>W1 L4</td></tr>
-        <tr id="term-memory"><td>记忆<span class="en">memory</span></td><td>跨轮次保留的信息。短期记忆通常是会话消息；长期记忆是外部存储的笔记、偏好、经验。</td><td>W2 D8</td></tr>
-        <tr id="term-compaction"><td>压缩<span class="en">compaction</span></td><td>上下文接近上限时，把历史总结成更短的摘要并重新开始，保留关键决策与未解决问题。</td><td>W2 D8</td></tr>
+        <tr id="term-agent-state"><td>Agent 状态<span class="en">agent state</span></td><td>一次任务/会话内 Agent 已知与正在做的事：消息、事实、决策、未解决问题、副作用记录。可序列化、可 checkpoint。</td><td>W2 L5</td></tr>
+        <tr id="term-short-term-memory"><td>短期记忆<span class="en">short-term memory</span></td><td>线程/会话作用域的记忆，通常就是 state 里的消息与事实，随 checkpoint 持久化，会话结束后不再共享。</td><td>W2 L5</td></tr>
+        <tr id="term-long-term-memory"><td>长期记忆<span class="en">long-term memory</span></td><td>跨会话、跨任务保留的信息，存在外部 store，按 namespace/key 组织，需要写入与检索策略。</td><td>W2 L5</td></tr>
+        <tr id="term-semantic-memory"><td>语义记忆<span class="en">semantic memory</span></td><td>事实、偏好、概念。例如“这个用户希望先看 runbook”。</td><td>W2 L5</td></tr>
+        <tr id="term-episodic-memory"><td>情景记忆<span class="en">episodic memory</span></td><td>过去的事件与动作序列。例如“上次连接池事故是怎么处理的”。</td><td>W2 L5</td></tr>
+        <tr id="term-procedural-memory"><td>程序记忆<span class="en">procedural memory</span></td><td>规则、流程、怎么做事。例如“回滚必须 on-call 负责人审批”。</td><td>W2 L5</td></tr>
+        <tr id="term-structured-notes"><td>结构化笔记<span class="en">structured note-taking</span></td><td>把进展写到上下文外的笔记（如 NOTES.md），需要时再读回上下文。适合跨很多步、有清晰里程碑的任务。</td><td>W2 L5</td></tr>
+        <tr id="term-context-pollution"><td>上下文污染<span class="en">context pollution</span></td><td>长上下文中的四类问题：poisoning（错误信息被沿用）、distraction（被长文带偏）、confusion（无关内容影响回答）、clash（上下文互相矛盾）。</td><td>W2 L5</td></tr>
+        <tr id="term-memory"><td>记忆<span class="en">memory</span></td><td>跨轮次保留的信息。短期记忆通常是会话消息；长期记忆是外部存储的笔记、偏好、经验。</td><td>W2 L5</td></tr>
+        <tr id="term-compaction"><td>压缩<span class="en">compaction</span></td><td>上下文接近上限时，把历史总结成更短的状态并重新开始，保留关键决策与未解决问题。是有损的状态转移，不是人类摘要。</td><td>W2 L5</td></tr>
         <tr id="term-subagent"><td>子 Agent<span class="en">sub-agent</span></td><td>由主 Agent 派生的专用 Agent，独立探索大量信息后只返回精简结论，用于突破上下文与并行探索的限制。</td><td>W2 D11</td></tr>
       </tbody>
     </table>
@@ -138,9 +146,9 @@
       <tbody>
         <tr id="term-state-graph"><td>状态图<span class="en">StateGraph</span></td><td>LangGraph 的核心抽象：节点是计算步骤，边是控制流，状态在各节点间传递并按 reducer 合并。</td><td>W2 D9</td></tr>
         <tr id="term-reducer"><td>Reducer</td><td>定义“新值如何合并进旧状态”的函数。例如消息列表用 append，计数器用求和。写错 reducer 是状态丢失的常见原因。</td><td>W2 D9</td></tr>
-        <tr id="term-checkpoint"><td>检查点<span class="en">checkpoint</span></td><td>把 Agent 每一步的状态持久化。支持断点恢复、时间旅行调试、多会话隔离。</td><td>W2 D10</td></tr>
+        <tr id="term-checkpoint"><td>检查点<span class="en">checkpoint</span></td><td>把 Agent 每一步的状态持久化。支持断点恢复、时间旅行调试、多会话隔离。</td><td>W2 L5</td></tr>
         <tr id="term-durable-execution"><td>持久化执行<span class="en">durable execution</span></td><td>进程崩溃或人工暂停后，任务能从上次检查点继续，且不重复执行有副作用的操作。</td><td>W2 D13</td></tr>
-        <tr id="term-idempotency"><td>幂等<span class="en">idempotency</span></td><td>同一操作重复执行，效果与执行一次相同。Agent 重试、断点恢复、模型重复调用时，写工具必须幂等。</td><td>W1 D6</td></tr>
+        <tr id="term-idempotency"><td>幂等<span class="en">idempotency</span></td><td>同一操作重复执行，效果与执行一次相同。Agent 重试、断点恢复、模型重复调用时，写工具必须幂等。</td><td>W1 L2 · W2 L5</td></tr>
         <tr id="term-hitl"><td>人在回路<span class="en">human-in-the-loop</span></td><td>在关键动作前暂停，等待人类批准、修改或补充信息。高风险工具（转账、重启、删除）的默认配置。</td><td>W2 D13</td></tr>
         <tr id="term-handoff"><td>交接<span class="en">handoff</span></td><td>一个 Agent 把控制权连同上下文交给另一个 Agent。OpenAI Agents SDK 的核心多 Agent 原语。</td><td>W2 D11</td></tr>
         <tr id="term-supervisor"><td>Supervisor</td><td>一个负责分派任务、汇总结果的协调 Agent；子 Agent 各自专注一个领域。比“全知全能单 Agent”更可控。</td><td>W2 D11</td></tr>

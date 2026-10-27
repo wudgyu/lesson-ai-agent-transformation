@@ -251,7 +251,7 @@
     <table>
       <thead><tr><th>Day</th><th>主题</th><th>形式</th><th>产出</th></tr></thead>
       <tbody>
-        <tr><td>D8</td><td>状态与记忆：短期会话、长期记忆、compaction</td><td>讲 + lab</td><td>带记忆的会话 Agent</td></tr>
+        <tr><td>D8</td><td><a href="../lessons/0005-state-memory.html">状态与记忆：短期会话、长期记忆、compaction</a></td><td>讲 + lab</td><td>带记忆的会话 Agent</td></tr>
         <tr><td>D9</td><td>LangGraph I：StateGraph、reducer、条件边</td><td>讲 + lab</td><td>用图重建 mini-agent</td></tr>
         <tr><td>D10</td><td>LangGraph II：checkpoint、interrupt、流式</td><td>讲 + lab</td><td>可恢复、可中断的 Agent</td></tr>
         <tr><td>D11</td><td>多 Agent 模式：supervisor、handoff、sub-agent</td><td>讲 + 案例</td><td>supervisor 原型 + 成本对比</td></tr>
@@ -265,6 +265,7 @@
     <ul>
       <li>用 StateGraph 表达一个带分支、循环、人工审批的 Agent，并解释每个 reducer 的作用。</li>
       <li>在进程崩溃后从 checkpoint 恢复任务，不重复执行有副作用的工具。</li>
+      <li>设计 state、compaction 与长期记忆策略，并用 token / 保留率 / resume 指标证明它有效。</li>
       <li>判断何时该用多 Agent，何时单 Agent + 好工具更便宜、更可靠。</li>
     </ul>
 
@@ -445,6 +446,8 @@
     &nbsp;·&nbsp;
     <a href="../lessons/0004-rerank-citations.html"><strong>→ 第 4 课：RAG II</strong></a>
     &nbsp;·&nbsp;
+    <a href="../lessons/0005-state-memory.html"><strong>→ 第 5 课：状态与记忆</strong></a>
+    &nbsp;·&nbsp;
     <a href="glossary.html">术语表</a>
     &nbsp;·&nbsp;
     <a href="tool-design-checklist.html">工具设计清单</a>
@@ -453,6 +456,8 @@
     &nbsp;·&nbsp;
     <a href="rag-answer-checklist.html">RAG 答案与引用清单</a>
     &nbsp;·&nbsp;
+    <a href="state-memory-checklist.html">状态与记忆清单</a>
+    &nbsp;·&nbsp;
     <a href="../labs/0001-mini-agent/">Lab 1</a>
     &nbsp;·&nbsp;
     <a href="../labs/0002-tool-design/">Lab 2</a>
@@ -460,6 +465,8 @@
     <a href="../labs/0003-rag-retrieval/">Lab 3</a>
     &nbsp;·&nbsp;
     <a href="../labs/0004-rerank-citations/">Lab 4</a>
+    &nbsp;·&nbsp;
+    <a href="../labs/0005-state-memory/">Lab 5</a>
   </p>
 
   <div class="source-card">
@@ -476,7 +483,7 @@
   <nav class="footer-nav">
     <a href="../MISSION.md">← 任务说明</a>
     <a href="glossary.html">术语表</a>
-    <a class="next" href="../lessons/0004-rerank-citations.html">第 4 课：RAG II →</a>
+    <a class="next" href="../lessons/0005-state-memory.html">第 5 课：状态与记忆 →</a>
   </nav>
 
 </main>

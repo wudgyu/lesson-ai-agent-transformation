@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 课 · 状态与记忆：上下文不是记忆</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 第 2 周 · 第 5 课</div>
+  <h1>上下文不是记忆</h1>
+  <p class="subtitle">把状态、记忆与上下文分开，Agent 才能在长任务里保持连贯。</p>
+  <div class="meta">
+    <span>Lesson 0005</span>
+    <span>约 85 分钟</span>
+    <span>阅读 30′ · 测验 5′ · Lab 50′</span>
+    <span>无需 API key</span>
+  </div>
+
+  <p class="lede">
+    一次排障会跨十几轮：先看健康，再查日志，翻 runbook，确认部署，最后给出结论。
+    上下文窗口会满，进程会崩，用户会隔天回来问“上次那个事故怎么样了”。
+    这一课把“记住”拆成三件不同的事：context、state、memory。
+  </p>
+
+  <details class="recall">
+    <summary>90 秒回忆：先别往下看，回答第 4 课的三件事</summary>
+    <ol>
+      <li>Rerank 能修哪类失败，不能修哪类？</li>
+      <li>引用 ID 有效、quote 也在来源里，为什么答案仍可能错？</li>
+      <li>语料里没有答案却硬答，对应哪个 failure point？</li>
+    </ol>
+    <p><strong>对答案：</strong>能修“候选里有但排太低”，不能修“候选集没召回”；quote containment 不检查结论蕴含；FP1 Missing Content，正确行为是拒答。</p>
+    <p class="small">有一题答不上来？先回 <a href="0004-rerank-citations.html">第 4 课</a> 补一眼，再回来。</p>
+  </details>
+
+  <div class="toc no-print">
+    <div class="toc-title">本课地图</div>
+    <ol>
+      <li><a href="#three">三个容易混为一谈的东西</a></li>
+      <li><a href="#budget">上下文预算与四种污染</a></li>
+      <li><a href="#state">State：把会话变成可恢复的对象</a></li>
+      <li><a href="#compaction">Compaction：状态转移，不是摘要</a></li>
+      <li><a href="#memory">Long-term memory：写入与读取</a></li>
+      <li><a href="#resume">Checkpoint 与 resume</a></li>
+      <li><a href="#eval">怎么评测记忆</a></li>
+      <li><a href="#quiz">检验一下</a></li>
+      <li><a href="#lab">Lab：给 RepoMedic 加状态与记忆</a></li>
+      <li><a href="#java">和 Java 后端对照</a></li>
+    </ol>
+  </div>
+
+  <div class="callout win">
+    <span class="label">本课结束时，你能</span>
+    <p>① 区分 context / state / memory，并设计一个带 provenance 的状态对象；
+    ② 写出能保留事实、决策与未解决问题的 compaction；
+    ③ 用 checkpoint/resume 与幂等副作用，让 Agent 崩溃后不重复执行写操作。</p>
+  </div>
+
+  <h2 id="three"><span class="num">01</span>三个容易混为一谈的东西<a class="anchor" href="#three">¶</a></h2>
+
+  <p>
+    “记忆”这个词在 Agent 讨论里被用得很松。先把三个层次分开：
+  </p>
+
+  <table>
+    <thead><tr><th></th><th>Context</th><th>State</th><th>Memory</th></tr></thead>
+    <tbody>
+      <tr><td>生命周期</td><td>这一次模型调用</td><td>这次任务 / 会话</td><td>跨会话、跨任务</td></tr>
+      <tr><td>存储位置</td><td>上下文窗口</td><td>内存对象 + checkpoint</td><td>外部 store / 文件 / 数据库</td></tr>
+      <tr><td>谁读写</td><td>模型看见的内容</td><td>Agent 代码显式维护</td><td>写入策略 + 检索策略</td></tr>
+      <tr><td>典型内容</td><td>系统提示、任务、记忆、最近消息、工具结果</td><td>事实、决策、未解决问题、副作用记录</td><td>用户偏好、事故经验、流程规则</td></tr>
+      <tr><td>失败模式</td><td>溢出、context rot、污染</td><td>丢事实、重复副作用、状态不一致</td><td>过期、错误、隐私泄露、检索错</td></tr>
+    </tbody>
+  </table>
+
+  <div class="formula">
+    context<sub>t</sub> = <strong>select</strong>(state<sub>t</sub>, memory, task<sub>t</sub>)
+  </div>
+
+  <p>
+    模型永远只看到 context。State 和 memory 是<strong>你</strong>在模型外面维护的结构；
+    你的工作是把其中最相关的那一小部分“投影”进 context。
+    Anthropic 把上下文称为有限的<strong>注意力预算</strong>：每多一个 token，都在消耗模型分配注意力的能力。
+    <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective Context Engineering</a>
+  </p>
+
+  <div class="callout note">
+    <span class="label">Java 后端对照</span>
+    <p>
+      Context ≈ 一次请求的 DTO；State ≈ 会话/任务对象（可持久化）；Memory ≈ 数据库或缓存。
+      你不会把整个数据库塞进一个请求，也不该把整个会话历史塞进一次模型调用。
+    </p>
+  </div>
+
+  <h2 id="budget"><span class="num">02</span>上下文预算与四种污染<a class="anchor" href="#budget">¶</a></h2>
+
+  <p>
+    上下文越长，模型对其中信息的利用越差——这叫 <em>context rot</em>。
+    Anthropic 的观察是：所有模型都会出现不同程度的退化，只是斜率不同。
+    所以“窗口够大”不是解决方案；窗口越大，你越需要决定<strong>什么不该进去</strong>。
+  </p>
+
+  <p>
+    LangChain 把长上下文带来的问题分成四类，值得当作排错清单：
+  </p>
+
+  <table>
+    <thead><tr><th>污染类型</th><th>发生了什么</th><th>RepoMedic 例子</th></tr></thead>
+    <tbody>
+      <tr><td>Context Poisoning</td><td>错误信息进入上下文，并被后续推理沿用</td><td>一个错误的根因假设被反复引用</td></tr>
+      <tr><td>Context Distraction</td><td>上下文太长，模型被训练分布外的内容带偏</td><td>塞入 50 条日志，模型忘了任务</td></tr>
+      <tr><td>Context Confusion</td><td>无关内容影响了回答</td><td>支付服务的复盘被当成订单服务的根因</td></tr>
+      <tr><td>Context Clash</td><td>上下文中的信息互相矛盾</td><td>旧 runbook 说 40，新配置说 50</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    LangChain 把应对策略归纳成四个动作：<strong>write</strong>（写到上下文外）、
+    <strong>select</strong>（检索回来）、<strong>compress</strong>（摘要/裁剪）、
+    <strong>isolate</strong>（子 Agent 隔离）。这一课主要做前三个，第四个留到多 Agent 课。
+    <a href="https://blog.langchain.com/context-engineering-for-agents/">Context Engineering for Agents</a>
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 720 300" role="img" aria-labelledby="memory-title memory-desc">
+      <title id="memory-title">Context、State 与 Memory 的关系</title>
+      <desc id="memory-desc">State 与长期记忆通过 select 和 retrieve 投影到上下文；上下文中的事实被抽取回 State；State 通过写入策略进入长期记忆。</desc>
+      <defs>
+        <marker id="arrow-mem" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--rule-strong)"></path>
+        </marker>
+        <marker id="arrow-mem-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+        </marker>
+      </defs>
+
+      <rect class="d-node-io" x="180" y="20" width="360" height="62" rx="6"></rect>
+      <text class="d-text" x="360" y="46">Context（这一次调用）</text>
+      <text class="d-sub" x="360" y="66">system · task · memories · recent turns</text>
+
+      <rect class="d-node-accent" x="180" y="120" width="360" height="62" rx="6"></rect>
+      <text class="d-text" x="360" y="146">State（这次会话）</text>
+      <text class="d-sub" x="360" y="166">facts · decisions · open questions · side effects</text>
+
+      <rect class="d-node" x="180" y="220" width="360" height="62" rx="6"></rect>
+      <text class="d-text" x="360" y="246">Memory（跨会话）</text>
+      <text class="d-sub" x="360" y="266">semantic · episodic · procedural</text>
+
+      <line class="d-arrow" x1="300" y1="120" x2="300" y2="82" marker-end="url(#arrow-mem)"></line>
+      <text class="d-label" x="245" y="104">select / compact</text>
+
+      <line class="d-arrow-accent" x1="420" y1="82" x2="420" y2="120" marker-end="url(#arrow-mem-accent)"></line>
+      <text class="d-label" x="475" y="104">extract facts</text>
+
+      <line class="d-arrow" x1="300" y1="220" x2="300" y2="182" marker-end="url(#arrow-mem)"></line>
+      <text class="d-label" x="245" y="204">retrieve</text>
+
+      <line class="d-arrow-accent" x1="420" y1="182" x2="420" y2="220" marker-end="url(#arrow-mem-accent)"></line>
+      <text class="d-label" x="475" y="204">write policy</text>
+    </svg>
+    <figcaption>Context 是视图；State 是可恢复的工作台；Memory 是跨会话的仓库。</figcaption>
+  </figure>
+
+  <h2 id="state"><span class="num">03</span>State：把会话变成可恢复的对象<a class="anchor" href="#state">¶</a></h2>
+
+  <p>
+    不要用“把消息列表 append 起来”当状态。消息列表只记录说过什么，不记录<strong>已经确认了什么</strong>、
+    <strong>还缺什么</strong>、<strong>哪些动作已经执行过</strong>。一个可恢复的 state 至少要有：
+  </p>
+
+  <pre><code>{
+  "messages": [...],
+  "facts": {
+    "db_pool_max": {
+      "value": "50",
+      "source": "tool:get_service_health",
+      "confidence": 0.9,
+      "status": "active"
+    }
+  },
+  "decisions": ["不要只重启；先修 N+1 或回滚"],
+  "open_questions": ["是否已经回滚或恢复批量查询？"],
+  "side_effects": ["restart:order-service:APR-1"],
+  "phase": "investigating"
+}</code></pre>
+
+  <p>
+    三个设计决定最关键：
+  </p>
+
+  <ul>
+    <li><strong>事实带 provenance 与 confidence</strong>：没有来源的事实，无法在冲突时判断该信谁。</li>
+    <li><strong>冲突显式 supersede</strong>：旧值不删除，标记为 <code>superseded</code>；这既是审计，也是调试。</li>
+    <li><strong>副作用单独记录</strong>：写操作不能只存在于消息里，否则 resume 后模型会重复执行。</li>
+  </ul>
+
+  <p>
+    State 的更新应该像 reducer：消息 append、事实按键合并、问题去重、决策保留。
+    这和你熟悉的 event sourcing 很像：消息/工具结果是事件，state 是由事件归约出的当前视图；
+    checkpoint 是快照。LangGraph 的 StateGraph 与 checkpointer 就是把这个模式产品化。
+    <a href="https://docs.langchain.com/oss/python/langgraph/memory">LangGraph — Memory</a>
+  </p>
+
+  <div class="callout warn">
+    <span class="label">If it isn't in state, it didn't happen</span>
+    <p>
+      进程崩溃后，模型看不到任何“它以为发生过”的事。只有落进 state / checkpoint 的事实、决策、
+      未解决问题和副作用记录，才能在 resume 后继续。消息列表不是状态的全部。
+    </p>
+  </div>
+
+  <h2 id="compaction"><span class="num">04</span>Compaction：状态转移，不是摘要<a class="anchor" href="#compaction">¶</a></h2>
+
+  <p>
+    Compaction 是在上下文接近上限时，把历史压缩成一段更短的状态，重新开始一个上下文窗口。
+    Anthropic 的描述很具体：保留架构决策、未解决的 bug、实现细节，丢掉冗余的工具输出和消息；
+    Claude Code 会保留最近访问的 5 个文件。调参时先最大化 recall，再优化 precision。
+    <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective Context Engineering</a>
+  </p>
+
+  <p>
+    最容易上手的压缩不是“让模型写一段摘要”，而是<strong>清掉旧的工具结果</strong>。
+    一个工具结果在调用后的几轮里可能有用，之后通常只剩一句结论有价值。
+    Anthropic 把 tool result clearing 称为最轻、最安全的 compaction。
+  </p>
+
+  <h3>本 lab 的压缩策略</h3>
+
+  <p>
+    Lab 的 <code>compaction.py</code> 不调用模型，而是把 state 里的结构化信息写成固定格式：
+  </p>
+
+  <pre><code># Compacted session state
+
+## Confirmed facts
+- db_pool_max = 50 (source: tool:get_service_health, confidence: 0.90)
+- root_cause = N+1 in OrderQueryService.findRecentOrders (source: tool:search_runbooks, ...)
+
+## Decisions / constraints
+- 不要重启；先查根因
+
+## Open questions
+- 是否已经回滚或恢复批量查询？
+
+## Recent tool evidence
+- search_runbooks: source=incidents/2026-10-24-order-pool.md; ...</code></pre>
+
+  <p>
+    然后保留 system 消息、<strong>第一条 user 消息</strong>和最近 4 条消息，把中间历史替换成这条摘要。
+    这样做的好处是：事实、决策、未解决问题不依赖模型“记得写”，而是从 state 里直接生成。
+  </p>
+
+  <h3>实测：压缩保住了什么，代价是什么</h3>
+
+  <p class="small">18 轮排障，预算 800 tokens，阈值 0.70，keep_recent=4。离线实测，2026-10-27。</p>
+
+  <table>
+    <thead><tr><th>模式</th><th>任务成功</th><th>最初约束保留</th><th>峰值 tokens</th><th>压缩次数</th><th>丢弃消息</th></tr></thead>
+    <tbody>
+      <tr><td>none（硬截断）</td><td>是</td><td><strong>否</strong></td><td>842</td><td>0</td><td>8</td></tr>
+      <tr><td>compaction</td><td>是</td><td><strong>是</strong></td><td>673</td><td>8</td><td>0</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    两种模式都能答对最终问题，但硬截断把最初的用户约束（“先查日志，不要重启”）丢掉了。
+    压缩保住了它，峰值也低了约 170 tokens。代价是压缩了 8 次——<strong>压缩本身也有成本</strong>。
+  </p>
+
+  <p>
+    把阈值调高、只保留最近 2 条消息，压缩次数会降到 2 次，峰值升到约 741，最终 tokens 反而更低：
+  </p>
+
+  <pre><code>python3 eval.py --scenario long --threshold 0.9 --keep-recent 2</code></pre>
+
+  <div class="callout warn">
+    <span class="label">Compaction thrash</span>
+    <p>
+      每次压缩都要调用模型、重写状态、重新建立上下文。如果阈值为 0.7、保留 4 条，
+      你可能会在每一轮都压缩一次。把 <code>compactions</code> 当成指标看：
+      它太高，说明阈值太低或 <code>keep_recent</code> 太大。
+    </p>
+  </div>
+
+  <h3>Structured notes：压缩之外的另一条路</h3>
+
+  <p>
+    Anthropic 还推荐 <strong>structured note-taking</strong>：让 Agent 把进展写到上下文外的笔记里，
+    下次需要时再读回来。Claude Code 的 to-do list、项目里的 <code>NOTES.md</code> 都是这个模式。
+    它特别适合“有清晰里程碑、需要跨很多步”的任务；compaction 更适合连续的对话流。
+  </p>
+
+  <h2 id="memory"><span class="num">05</span>Long-term memory：写入与读取<a class="anchor" href="#memory">¶</a></h2>
+
+  <p>
+    State 是线程/会话作用域的；长期记忆跨会话，需要自己的<strong>写入策略</strong>与<strong>读取策略</strong>。
+    LangGraph 把长期记忆按认知科学分成三类，这个分类在工程上很好用：
+  </p>
+
+  <table>
+    <thead><tr><th>类型</th><th>存什么</th><th>RepoMedic 例子</th><th>典型读法</th></tr></thead>
+    <tbody>
+      <tr><td>Semantic</td><td>事实、偏好、概念</td><td>“这个用户希望先看 runbook”</td><td>检索后注入 system/context</td></tr>
+      <tr><td>Episodic</td><td>过去的事件、动作序列</td><td>“上次 order-service 连接池事故怎么处理的”</td><td>few-shot / 历史案例</td></tr>
+      <tr><td>Procedural</td><td>规则、流程、怎么做事</td><td>“回滚必须 on-call 负责人审批”</td><td>更新 system prompt / 工具策略</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    CoALA 把这些记忆组件放进一个统一的认知架构：工作记忆、情景记忆、语义记忆、程序记忆，
+    再加上结构化的动作空间与决策过程。<a href="https://arxiv.org/abs/2309.02427">CoALA</a>
+    MemGPT 则从操作系统借来“虚拟上下文管理”：把主上下文当成 RAM，把外部存储当成磁盘，
+    通过分页/换入换出制造“更大的记忆”的假象。<a href="https://arxiv.org/abs/2310.08560">MemGPT</a>
+  </p>
+
+  <h3>写入策略：不是所有对话都值得记</h3>
+
+  <ul>
+    <li><strong>显式 vs 隐式</strong>：用户说“记住”时写入最可靠；隐式提取需要置信度与去重。</li>
+    <li><strong>热路径 vs 后台</strong>：LangGraph 明确区分在 Agent 运行中写（实时、可解释、增加延迟）与后台任务写（不阻塞、需要调度）。</li>
+    <li><strong>去重与 TTL</strong>：同一偏好反复说，不应该产生十条记忆；临时信息要过期。</li>
+    <li><strong>provenance 与 confidence</strong>：记忆来自用户、事故复盘还是模型推断？冲突时按来源与置信度裁决。</li>
+    <li><strong>隐私与权限</strong>：记忆是跨会话的数据资产，写入前就要想清楚保留多久、谁能读。</li>
+  </ul>
+
+  <h3>读取策略：相关性、时近性、重要性</h3>
+
+  <p>
+    Generative Agents 的 memory stream 用三个信号检索：recency（越近越重要）、
+    importance（事件本身多重要）、relevance（与当前 query 多相关）。
+    Lab 用了一个简化版：0.6 × 词面重合 + 0.2 × 时近性 + 0.2 × 置信度。
+    <a href="https://arxiv.org/abs/2304.03442">Generative Agents</a>
+  </p>
+
+  <p>
+    Lab 里有两个直接可见的效果：
+  </p>
+
+  <table>
+    <thead><tr><th>场景</th><th>没有长期记忆</th><th>有长期记忆</th></tr></thead>
+    <tbody>
+      <tr><td>跨会话偏好</td><td>第一个工具是 <code>get_service_health</code></td><td>第一个工具是 <code>search_runbooks</code></td></tr>
+      <tr><td>旧记忆冲突</td><td>旧值 40 不会被记录；新值 50 生效</td><td>旧值 40 被标记 <code>superseded</code>，最终答案使用 50</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <span class="label">Memory is not ground truth</span>
+    <p>
+      记忆可能是错的、过期的、被注入的。它应该和检索结果一样带来源与置信度，
+      在冲突时让新证据覆盖旧记忆，而不是相反。不要把“长期记忆”当成“永远正确”。
+    </p>
+  </div>
+
+  <h2 id="resume"><span class="num">06</span>Checkpoint 与 resume<a class="anchor" href="#resume">¶</a></h2>
+
+  <p>
+    Checkpoint 是把 state 持久化成快照；resume 是从快照恢复，继续未完成的任务。
+    这和 compaction 是两件事：
+  </p>
+
+  <table>
+    <thead><tr><th></th><th>Checkpoint</th><th>Compaction</th></tr></thead>
+    <tbody>
+      <tr><td>目的</td><td>崩溃/暂停后恢复</td><td>控制上下文预算</td></tr>
+      <tr><td>是否损失信息</td><td>不损失（完整 state）</td><td>有损（摘要/裁剪）</td></tr>
+      <tr><td>存储</td><td>数据库/文件</td><td>新的上下文窗口</td></tr>
+      <tr><td>关键风险</td><td>重复副作用、状态过期</td><td>丢事实、压缩抖动</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Lab 的 <code>SessionAgent</code> 在每一步之后写 checkpoint。Resume 后，state 里有事实、
+    未解决问题和 <code>side_effects</code>；再次调用 <code>restart_service</code> 时，
+    工具用 <code>service + approval_id</code> 作为幂等键，第二次返回 <code>noop</code>。
+    实测 <code>duplicate_side_effects = 0</code>。
+  </p>
+
+  <div class="callout note">
+    <span class="label">Resume is not replay</span>
+    <p>
+      恢复不是把历史消息重新执行一遍。只读工具可以重放，有副作用的工具必须幂等或跳过。
+      这就是第 2 课的 tool idempotency，在状态层的体现。
+    </p>
+  </div>
+
+  <h2 id="eval"><span class="num">07</span>怎么评测记忆<a class="anchor" href="#eval">¶</a></h2>
+
+  <p>
+    “问模型记不记得”不是评测。模型可能说“记得”，但行为没有使用记忆；也可能说“不记得”，
+    但答案其实用到了上下文。评测要看<strong>行为</strong>与<strong>状态</strong>：
+  </p>
+
+  <table>
+    <thead><tr><th>指标</th><th>回答的问题</th></tr></thead>
+    <tbody>
+      <tr><td>Task success</td><td>最终答案是否包含期望事实</td></tr>
+      <tr><td>Prompt / fact retention</td><td>压缩/恢复后，任务约束与关键事实是否还在</td></tr>
+      <tr><td>Peak / final tokens</td><td>上下文预算是否受控</td></tr>
+      <tr><td>Compaction count</td><td>压缩是否抖动</td></tr>
+      <tr><td>Memory hit</td><td>跨会话偏好是否被检索到并改变行为</td></tr>
+      <tr><td>Stale handling</td><td>旧记忆是否被新证据正确覆盖</td></tr>
+      <tr><td>Resume success</td><td>崩溃恢复后事实与未解决问题是否还在</td></tr>
+      <tr><td>Duplicate side effects</td><td>恢复后是否重复执行写操作</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    评测要分片：短会话 / 长会话、同会话 / 跨会话、无冲突 / 有冲突、正常结束 / 崩溃恢复。
+    平均分会掩盖“长会话里 Prompt 丢了”这种局部失败。
+  </p>
+
+  <div class="callout note">
+    <span class="label">本 lab 的评测方式</span>
+    <p>
+      4 个场景：<code>long_incident</code>、<code>preference</code>、<code>stale_memory</code>、
+      <code>resume</code>。每个场景用脚本化策略跑固定轮次，比较不同模式。
+      完整命令与指标见 <a href="../labs/0005-state-memory/">labs/0005-state-memory/</a>。
+    </p>
+  </div>
+
+  <h2 id="quiz"><span class="num">08</span>检验一下<a class="anchor" href="#quiz">¶</a></h2>
+
+  <p class="small">先自己想，再点选项。答错会给出解释。</p>
+
+  <div class="quiz" data-quiz>
+    <div class="quiz-q" data-answer="b" data-explain="短期记忆是线程/会话作用域的，随 state 与 checkpoint 走；长期记忆跨会话，存在外部 store，按 namespace/key 组织。">
+      <p class="quiz-prompt">短期记忆与长期记忆的核心区别是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>短期用向量存储，长期用纯文本存储</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>短期在会话内，长期跨会话共享</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>短期由模型管理，长期由用户管理</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>短期存在数据库，长期存在上下文里</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="d" data-explain="压缩是状态转移：任务约束、决策、未解决问题、带来源的事实必须保留；冗余工具输出和寒暄可以丢。只保留消息会丢掉结构化状态。">
+      <p class="quiz-prompt">做 compaction 时，最应该优先保留什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>所有原始工具输出，方便以后追溯</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>每一轮用户的寒暄和确认语句</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>模型完整的内部推理链全文</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>任务约束、决策、未解决问题与事实</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="c" data-explain="旧记忆不是真值。新工具证据应该覆盖旧值，同时把旧值标记为 superseded，保留审计与调试信息。">
+      <p class="quiz-prompt">旧记忆与新工具证据冲突时，正确做法是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>永远相信记忆，因为它是长期的积累</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>永远相信工具，完全不记录旧值</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>以新证据为准，保留旧值记录</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>把两个值都写进最终答案让用户判断</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="a" data-explain="Resume 后最危险的是重复执行有副作用的写操作。只读工具可以重放；写工具必须用幂等键或 side_effects 记录来防止重复。">
+      <p class="quiz-prompt">checkpoint/resume 后，最需要防止什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>重复执行有副作用的写操作</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>重复读取只读工具的结果</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>重新加载系统提示词文本</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>重新计算上下文的 token 数</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="记忆评测要看行为：跨会话后第一个工具是否改变、旧值是否被覆盖、恢复后是否重复副作用。模型自述“记得”不可靠。">
+      <p class="quiz-prompt">为什么“问模型记不记得”不是好的记忆评测？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>模型总是会说自己记得所有事情</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>应该测行为是否真的使用了记忆</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>模型完全无法理解记忆类的问题</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>记忆评测只能靠人工逐条完成</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-score" aria-live="polite"></div>
+  </div>
+
+  <h2 id="lab"><span class="num">09</span>Lab：给 RepoMedic 加状态与记忆<a class="anchor" href="#lab">¶</a></h2>
+
+  <p>
+    代码在 <a href="../labs/0005-state-memory/">labs/0005-state-memory/</a>。
+    脚本化会话 Agent 会走 health → logs → runbook → answer，支持压缩、长期记忆、checkpoint/resume。
+  </p>
+
+  <h3>Step 1 · 离线校验（5 分钟）</h3>
+  <pre><code>cd labs/0005-state-memory
+python3 -m unittest -v</code></pre>
+  <p>
+    23 个测试覆盖 state 冲突、消息 ID、checkpoint、压缩、TTL、去重、跨会话偏好、
+    旧记忆覆盖、resume 与幂等副作用。
+  </p>
+
+  <h3>Step 2 · 跑四个场景（15 分钟）</h3>
+  <pre><code>python3 eval.py</code></pre>
+  <p>
+    重点看三组对比：<code>none</code> vs <code>compaction</code> 的 prompt retention 与 peak tokens；
+    <code>preference</code> 的第一个工具；<code>stale_memory</code> 的 superseded；<code>resume</code> 的 dup。
+  </p>
+
+  <h3>Step 3 · 调压缩阈值（10 分钟）</h3>
+  <pre><code>python3 eval.py --scenario long --threshold 0.9 --keep-recent 2</code></pre>
+  <p>
+    比较压缩次数、峰值 tokens 与最终 tokens。回答：为什么压缩次数少了，峰值反而高了？
+    在延迟预算与上下文预算之间，你会怎么选？
+  </p>
+
+  <h3>Step 4 · 做一次“旧记忆覆盖新事实”的实验（8 分钟）</h3>
+  <p>
+    打开 <code>memory.py</code> 的 <code>remember</code>，把去重逻辑改成“总是新增”，
+    再跑 <code>python3 eval.py --scenario stale</code>，观察记忆条数与最终答案。
+    然后改回去。
+  </p>
+
+  <h3>Step 5 · 做一次“重复副作用”的实验（8 分钟）</h3>
+  <p>
+    打开 <code>session.py</code>，把 <code>restart</code> 的幂等键改成随机值，
+    跑 <code>python3 eval.py --scenario resume</code>，观察 <code>dup</code> 指标。
+    然后改回 <code>service + approval_id</code>。
+  </p>
+
+  <h3>Step 6 · 回答三个问题</h3>
+  <ol>
+    <li>为什么 <code>none</code> 模式也能答对最终问题，却仍然是不合格的？</li>
+    <li>压缩次数从 8 降到 2，为什么峰值 tokens 反而升高？这笔交易划算吗？</li>
+    <li>如果用户说“以后都先看 runbook”，这条记忆应该存在 semantic 还是 procedural？为什么？</li>
+  </ol>
+
+  <h3>成功标准</h3>
+  <ul class="checklist" data-persist="lesson5-lab">
+    <li><label><input type="checkbox"><span>23 个测试全绿，<code>eval.py</code> 能跑完四个场景</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 context / state / memory 的生命周期差异</span></label></li>
+    <li><label><input type="checkbox"><span>能说出 compaction 必须保留的四类信息</span></label></li>
+    <li><label><input type="checkbox"><span>能解释为什么 <code>none</code> 模式 prompt_retained=no</span></label></li>
+    <li><label><input type="checkbox"><span>能解释旧记忆 40 如何被新证据 50 覆盖</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 resume 后为什么不会重复重启</span></label></li>
+  </ul>
+
+  <h2 id="java"><span class="num">10</span>和 Java 后端对照<a class="anchor" href="#java">¶</a></h2>
+
+  <table>
+    <thead><tr><th>Agent 概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>AgentState</td><td>会话状态 / 任务对象 / 请求上下文</td></tr>
+      <tr><td>Checkpoint</td><td>事务日志 + 快照 / 断点续跑</td></tr>
+      <tr><td>Compaction</td><td>日志压缩 / 状态快照 / 缓存淘汰</td></tr>
+      <tr><td>Fact + provenance</td><td>审计记录 / 数据血缘</td></tr>
+      <tr><td>Long-term memory</td><td>数据库 / Redis / 用户画像</td></tr>
+      <tr><td>TTL</td><td>缓存过期 / 数据保留策略</td></tr>
+      <tr><td>Side effect + idempotency key</td><td>Idempotency-Key / 去重表</td></tr>
+      <tr><td>Resume</td><td>崩溃恢复 / 至少一次投递</td></tr>
+      <tr><td>Memory write policy</td><td>数据写入规范 / 隐私与保留策略</td></tr>
+      <tr><td>Scenario eval</td><td>集成测试 / 契约测试</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    最大的认知转变是：<strong>Agent 的可靠性不取决于模型“记得”，而取决于你有没有把该记的写进结构化状态。</strong>
+    Prompt 是易失的，state 是可恢复的，memory 是有策略的。把这三层分开，长任务才可控。
+  </p>
+
+  <div class="source-card">
+    <div class="label">本课精读</div>
+    <h3>Anthropic — Effective Context Engineering for AI Agents</h3>
+    <p>
+      读完全文（约 20 分钟）。重点看 context rot、attention budget、compaction 的取舍、
+      structured note-taking，以及 sub-agent 如何隔离上下文。读完回到 lab，对照
+      <code>compaction.py</code> 的摘要字段，看它保留了哪几类信息。
+    </p>
+    <p><a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">anthropic.com/engineering/effective-context-engineering-for-ai-agents</a></p>
+    <p class="small">
+      选读：<a href="https://docs.langchain.com/oss/python/langgraph/memory">LangGraph — Memory</a> ·
+      <a href="https://openai.github.io/openai-agents-python/sessions/">OpenAI Agents SDK — Sessions</a> ·
+      <a href="https://arxiv.org/abs/2309.02427">CoALA</a> ·
+      <a href="https://arxiv.org/abs/2310.08560">MemGPT</a>
+    </p>
+  </div>
+
+  <p class="small center no-print">
+    打印版：<a href="../reference/state-memory-checklist.html">状态与记忆清单</a> ·
+    设计 state、compaction、memory 与 resume 时逐项过一遍。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">卡住了？</span>
+    <p>
+      回到终端问你的老师：“lesson 0005 里为什么 compaction 能保住最初任务，而 truncation 不能？”
+      或者把 <code>reports/memory-eval.json</code> 里某个场景的 state 贴过来，我们一起看。
+    </p>
+  </div>
+
+  <p class="small center no-print" style="margin-top:2.2rem;">
+    下一课：LangGraph——把这一课手写的 state、reducer、checkpoint 与条件边，用 StateGraph 重新表达。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="0004-rerank-citations.html">← 第 4 课：RAG II</a>
+    <a href="../reference/course-roadmap.html">课程路线图</a>
+    <a href="../reference/glossary.html">术语表</a>
+    <span class="next disabled">第 6 课：LangGraph（即将解锁）</span>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>
