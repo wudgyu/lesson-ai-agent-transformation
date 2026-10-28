@@ -45,6 +45,9 @@ python3 structured.py --live --ticket "生产环境订单服务大量 500，用�
 不同 OpenAI-compatible 供应商对 `stream_options`、`response_format` 的支持不同；
 如果报错，先确认该端点是否支持流式 usage 与 JSON mode。
 
+新一些的 OpenAI 模型把输出上限改名为 `max_completion_tokens`（`max_tokens` 已 deprecated）；
+本 lab 用 `max_tokens`，如果端点拒绝该字段，换成 `max_completion_tokens` 即可。
+
 ## 观察点
 
 1. **流式事件**：`delta` 是增量，`done` 才带完整文本与 usage。

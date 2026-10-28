@@ -132,7 +132,7 @@
   <table>
     <thead><tr><th>现象</th><th>先怀疑</th><th>先做什么</th></tr></thead>
     <tbody>
-      <tr><td>输出被截断</td><td><code>max_tokens</code> 太小</td><td>看 <code>finish_reason=length</code>；提高上限或缩短输入</td></tr>
+      <tr><td>输出被截断</td><td><code>max_tokens</code>（新模型：<code>max_completion_tokens</code>）太小</td><td>看 <code>finish_reason=length</code>；提高上限或缩短输入</td></tr>
       <tr><td>JSON 解析失败</td><td>没有 schema / 模型输出 Markdown</td><td>用 structured outputs；加解析容错与修复循环</td></tr>
       <tr><td>字段类型错</td><td>只做了 <code>json.loads</code></td><td>加 enum / type / required 校验</td></tr>
       <tr><td>重复执行工具</td><td>把 tool_calls 当执行结果 / 重试无幂等</td><td>暂停循环执行工具；写操作加幂等键</td></tr>
@@ -161,8 +161,10 @@ if errors:
     <div class="label">出处</div>
     <h3>本清单的依据</h3>
     <p>
-      OpenAI — <a href="https://platform.openai.com/docs/guides/text-generation">Text generation</a> ·
-      <a href="https://platform.openai.com/docs/guides/structured-outputs">Structured Outputs</a> ·
+      OpenAI — <a href="https://developers.openai.com/api/docs/guides/text">Text generation</a> ·
+      <a href="https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create">Create chat completion</a> ·
+      <a href="https://developers.openai.com/api/docs/guides/streaming-responses">Streaming</a> ·
+      <a href="https://developers.openai.com/api/docs/guides/structured-outputs">Structured Outputs</a> ·
       Anthropic — <a href="https://docs.anthropic.com/en/docs/build-with-claude/token-counting">Token counting</a> ·
       <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective Context Engineering</a>
     </p>

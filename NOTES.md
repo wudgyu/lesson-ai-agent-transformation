@@ -28,6 +28,7 @@
 - 评测（evaluation）不是最后一周的附加项，而是从第 1 周就埋入：每个 lab 都有小评测集。
 - 默认项目：**RepoMedic**（Java 代码库排障 Agent）。第 3 周开始前确认是否沿用、换领域或接入你公司的真实代码库。
 - 项目必须包含：RAG、工具、记忆、HITL、评测、tracing、部署。缺一项就不算“生产级”。
+- Lesson 1 仍以 **Chat Completions** 为教学协议；Responses API 作为官方文档默认形态和后续 Agents SDK 的对照，不替换 lab。2026-10 调研显示国产厂商已普遍支持 Responses，但实现深度不一。
 
 ## 进度
 
@@ -38,6 +39,7 @@
 - 2026-10-24：Lesson 0005《RAG I：检索，才是上限》交付（含 `labs/0005-rag-retrieval`：14 篇语料、20 例评测、BM25 / lexical-vector / hybrid，29 个离线测试）。
 - 2026-10-25：Lesson 0006《RAG II：让答案可被核查》交付（含 `labs/0006-rerank-citations`：15→5 重排、引用协议、11 例答案级评测、28 个离线测试）。
 - 2026-10-27：Lesson 0007《状态与记忆：上下文不是记忆》交付（含 `labs/0007-state-memory`：state / compaction / long-term memory / checkpoint-resume，4 个场景、23 个离线测试）。
+- 2026-10-28：同步 OpenAI 文档迁移（guides → developers.openai.com，Text generation 拆分）；更新 Lesson 0001/0004、RESOURCES、LLM 调用清单链接，并在 Lesson 0001 增加 Chat Completions ↔ Responses 术语对照与兼容性说明。
 - 尚未获得 lab 1–7 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
 - 第 1 课的核心观察：模型只输出 tool_calls，不执行；temperature=0 不保证绝对确定；结构化输出必须 schema + 校验 + 修复循环。
 - 第 2 课的核心观察：baseline prompt 23 token，exact 0.500、schema 0.800；engineered prompt 339 token，exact 1.000、schema 1.000。上下文工程的交易是“用预算买确定性”，不是越长越好。

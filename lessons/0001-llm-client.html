@@ -146,6 +146,12 @@
     </p>
   </div>
 
+  <p class="small">
+    命名注意：OpenAI 新模型把输出上限改名为 <code>max_completion_tokens</code>（包含 reasoning tokens），
+    <code>max_tokens</code> 已标记为 deprecated；本课与 Lab 仍用 <code>max_tokens</code>，
+    因为它是 OpenAI-compatible 端点最通用的字段。两者都是<strong>输出侧</strong>上限，不是输入侧。
+  </p>
+
   <h2 id="sampling"><span class="num">03</span>采样：temperature / top_p<a class="anchor" href="#sampling">¶</a></h2>
 
   <p>
@@ -275,6 +281,38 @@
       模型返回 <code>tool_calls</code> 后，循环必须暂停：执行工具、把结果作为 <code>tool</code> 消息
       追加、再用 <code>tool_call_id</code> 配对，发下一次请求。少了配对，API 会直接报错；
       把“模型说它查了日志”当成证据，则是更隐蔽的错误。
+    </p>
+  </div>
+
+  <div class="callout note">
+    <span class="label">API 形态：Chat Completions 与 Responses</span>
+    <p>
+      本课和 Lab 使用 <strong>Chat Completions</strong>（<code>messages</code> + <code>tool_calls</code>）。
+      它是覆盖最广的接口形态：主流 OpenAI-compatible 端点与本地推理服务都支持，
+      多数 Agent 框架内部也使用这套消息模型。
+    </p>
+    <p>
+      OpenAI 官方文档现在默认展示 <strong>Responses API</strong>，同一个概念会换名字。
+      读文档时按这张表对照：
+    </p>
+    <table>
+      <thead><tr><th>概念</th><th>Chat Completions（本课 / Lab）</th><th>Responses API（官方默认）</th></tr></thead>
+      <tbody>
+        <tr><td>system prompt</td><td><code>system</code> message</td><td><code>instructions</code> 或 <code>developer</code> message</td></tr>
+        <tr><td>输出上限</td><td><code>max_tokens</code>（新模型用 <code>max_completion_tokens</code>）</td><td><code>max_output_tokens</code></td></tr>
+        <tr><td>结构化输出</td><td><code>response_format</code></td><td><code>text.format</code></td></tr>
+        <tr><td>流式</td><td><code>chat.completion.chunk</code> + <code>delta</code></td><td>语义事件，如 <code>response.output_text.delta</code></td></tr>
+        <tr><td>工具调用</td><td><code>tool_calls</code> + <code>tool</code> message</td><td><code>function_call</code> item + <code>function_call_output</code></td></tr>
+      </tbody>
+    </table>
+    <p>
+      兼容性：截至 2026-10，Responses API 已不是 OpenAI 专属。国产主流厂商大多提供支持——
+      阿里云百炼、DeepSeek、Kimi、智谱 GLM、MiniMax、火山方舟（豆包）等有原生或兼容端点，
+      腾讯 TokenHub 等网关提供协议转换；跨厂商的
+      <a href="https://www.openresponses.org">Open Responses</a> 规范也已发布。
+      但“能调通”不等于“功能齐全”：<code>previous_response_id</code>、内置工具、background
+      等能力的支持程度各家不一，使用前先查供应商文档。这也是本课仍以 Chat Completions
+      为基线的原因：先把消息、工具调用和循环讲清楚，第 3 周再对照 Responses 的 item/event 模型。
     </p>
   </div>
 
@@ -410,15 +448,22 @@ python3 structured.py --live --ticket "生产环境订单服务大量 500，用�
 
   <div class="source-card">
     <div class="label">本课精读</div>
-    <h3>OpenAI — Text generation</h3>
+    <h3>OpenAI — 一次调用的各个部分</h3>
     <p>
-      读消息角色、temperature/top_p、max_tokens、流式与 structured outputs 几节（约 15 分钟）。
-      重点不是 API 参数表，而是“一次调用由哪些部分组成、哪些部分会失败”。
+      官方文档已按 Responses / Chat Completions 两套 API 拆分，按下面的顺序读（约 20 分钟）：
     </p>
-    <p><a href="https://platform.openai.com/docs/guides/text-generation">platform.openai.com/docs/guides/text-generation</a></p>
+    <ul>
+      <li><a href="https://developers.openai.com/api/docs/guides/text#message-roles-and-instruction-following">消息角色与指令优先级</a>（Text generation → Message roles）</li>
+      <li><a href="https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create">temperature / top_p / max_tokens</a>（Create chat completion → Body parameters；页面内搜参数名）</li>
+      <li><a href="https://developers.openai.com/api/docs/guides/streaming-responses#enable-streaming">流式响应</a>（Streaming API responses）</li>
+      <li><a href="https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=chat">Structured Outputs</a>（Chat Completions 模式）</li>
+    </ul>
+    <p>
+      重点不是 API 参数表，而是“一次调用由哪些部分组成、哪些部分会失败”。
+      官方文档默认展示 Responses API；它与课内 Chat Completions 的术语对照见上方的 callout。
+    </p>
     <p class="small">
       选读：<a href="https://docs.anthropic.com/en/docs/build-with-claude/token-counting">Anthropic — Token counting</a> ·
-      <a href="https://platform.openai.com/docs/guides/structured-outputs">OpenAI — Structured Outputs</a> ·
       <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective Context Engineering</a>
     </p>
   </div>

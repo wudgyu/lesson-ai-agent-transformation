@@ -1,16 +1,20 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-10-27。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-10-28。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
 
 ### LLM 基础与上下文工程
 
-- [OpenAI — Text generation](https://platform.openai.com/docs/guides/text-generation)
-  **第 1 课精读**。消息角色、temperature / top_p、max_tokens、流式、structured outputs 的官方说明。
-- [OpenAI — Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs)
-  JSON Schema 约束、严格模式、拒绝与失败处理。第 1 课 lab 的 schema 契约来源。
+- [OpenAI — Text generation](https://developers.openai.com/api/docs/guides/text)
+  **第 1 课精读（消息角色）**。文档已迁移并按 Responses / Chat Completions 拆分；该页只保留消息角色与指令优先级，采样参数在 API reference。
+- [OpenAI — Create chat completion](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
+  **第 1 课精读**。`messages`、temperature、top_p、max_tokens / max_completion_tokens、stream、response_format 的参数定义。
+- [OpenAI — Streaming API responses](https://developers.openai.com/api/docs/guides/streaming-responses)
+  **第 1 课精读**。SSE 流式事件；Responses 与 Chat Completions 的事件形态不同。
+- [OpenAI — Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+  **第 1 课精读**。JSON Schema 约束、严格模式、拒绝与失败处理；第 1 课 lab 的 schema 契约来源。页面可切换 `?api-mode=chat`。
 - [Anthropic — Token counting](https://docs.anthropic.com/en/docs/build-with-claude/token-counting)
   token 计数与上下文预算的官方说明；配合第 1 课的预算拆解。
 - [Anthropic — Prompt engineering overview](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview)
@@ -19,8 +23,31 @@
   system prompt 的职责与边界；不要把用户输入拼进 system。
 - [Anthropic — Few-shot examples](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/few-shot-examples)
   示例选择、格式一致性与标签平衡；few-shot 主要教格式与边界，不是塞知识。
-- [OpenAI — Prompt engineering](https://platform.openai.com/docs/guides/prompt-engineering)
+- [OpenAI — Prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering)
   输出契约、分隔符、少样本与迭代方法；选读。
+
+### Responses API 兼容性与形态对照
+
+> 2026-10 核验。Responses API 已不是 OpenAI 专属，但各家的实现深度不同；先看供应商文档，再决定是否依赖 `previous_response_id`、内置工具等能力。
+
+- [OpenAI — Responses API reference](https://developers.openai.com/api/reference/resources/responses/methods/create)
+  官方默认接口：`instructions`、`max_output_tokens`、`text.format`、语义化流式事件。
+- [Open Responses](https://www.openresponses.org)
+  2026-01 发布的跨厂商开放规范，基于 Responses API；OpenRouter、Vercel、Hugging Face、LM Studio、Ollama、vLLM 等参与，2026-10 捐给 Agentic AI Foundation。
+- [阿里云百炼 — OpenAI Responses 接口兼容](https://help.aliyun.com/zh/model-studio/compatibility-with-openai-responses-api)
+  Qwen 系列及托管的 DeepSeek / GLM / Kimi；端点 `/compatible-mode/v1/responses`。
+- [DeepSeek — Create response](https://api-docs.deepseek.com/api/create-response/)
+  官方 `POST /responses`；无状态，多轮需回传完整 `input`。
+- [Kimi — 在 Codex 中使用](https://platform.kimi.com/docs/guide/codex-kimi)
+  原生 `/v1/responses`，Codex 配置 `wire_api = "responses"`。
+- [智谱 — Response API 兼容](https://docs.bigmodel.cn/cn/guide/develop/responses/introduction)
+  原生 Responses 协议；默认 `store=false`，流式结束不发 `[DONE]`。
+- [MiniMax — Responses create](https://platform.minimax.cn/docs/api-reference/responses-create)
+  OpenAI Responses 兼容主接口。
+- [火山方舟 — 工具调用（Responses API）](https://ai.volcengine.com/docs/ark-aihub/2647006?lang=zh)
+  `function_call` → `previous_response_id` → `function_call_output` 的完整流程；端点 `/api/v3/responses`。
+- [腾讯 TokenHub — Responses API 兼容模式](https://cloud.tencent.cn/document/product/1823/133813)
+  对仅支持 Chat Completions 的模型做服务端协议转换；不支持 `previous_response_id` / background / 内置工具。
 
 ### 状态、记忆与上下文工程
 
