@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-10-28。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-10-29。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -17,14 +17,14 @@
   **第 1 课精读**。JSON Schema 约束、严格模式、拒绝与失败处理；第 1 课 lab 的 schema 契约来源。页面可切换 `?api-mode=chat`。
 - [Anthropic — Token counting](https://docs.anthropic.com/en/docs/build-with-claude/token-counting)
   token 计数与上下文预算的官方说明；配合第 1 课的预算拆解。
-- [Anthropic — Prompt engineering overview](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview)
-  **第 2 课精读**。system prompt、清楚直接、示例、输出格式、角色与约束的组织方式。
-- [Anthropic — System prompts](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/system-prompts)
-  system prompt 的职责与边界；不要把用户输入拼进 system。
-- [Anthropic — Few-shot examples](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/few-shot-examples)
-  示例选择、格式一致性与标签平衡；few-shot 主要教格式与边界，不是塞知识。
+- [Anthropic — Prompt engineering overview](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/overview)
+  **第 2 课精读（前半）**。Prompt engineering 的定位、先写成功标准、何时不该靠 prompt 解决。
+- [Anthropic — Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)
+  **第 2 课精读（后半）**。clear and direct、system prompt/roles、few-shot、XML 结构、长上下文布局；原 system-prompts 与 few-shot-examples 页面已合并到这里。
 - [OpenAI — Prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering)
   输出契约、分隔符、少样本与迭代方法；选读。
+- [李博杰 — 《深入理解 AI Agent》第 1 章](https://github.com/bojieli/ai-agent-book/blob/main/book/chapter1.md)
+  第 2 课 sidenote 来源。AI 应用工程范式变迁：提示工程 → 上下文工程 → Harness 工程 → Loop 工程 → Graph 工程。
 
 ### Responses API 兼容性与形态对照
 

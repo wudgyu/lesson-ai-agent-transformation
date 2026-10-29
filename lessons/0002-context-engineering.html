@@ -62,6 +62,17 @@
 
   <h2 id="context"><span class="num">01</span>上下文工程 vs prompt 工程<a class="anchor" href="#context">¶</a></h2>
 
+  <p class="sidenote">
+    <strong>AI 应用工程范式变迁：</strong>
+    <br><strong>提示工程 Prompt Engineering</strong>（通过优化输入给模型的自然语言指令来提升输出质量）
+    <br>→ <strong>上下文工程 Context Engineering</strong>（系统性地管理模型能看到的所有信息：系统指令、工具定义、对话历史、外部知识）
+    <br>→ <strong>Harness 工程</strong> （将视野从“模型能看到什么”进一步扩展到“Agent 如何组织模型运行并与环境交互”，涵盖上下文与工具接口、约束机制、验证手段、反馈循环和错误恢复等 Agent 边界内、模型之外的运行与治理机制）
+    <br>→ <strong>Loop 工程 Loop Engineering</strong>（把视野从单次运行扩展到跨轮次的持续自主运转：谁来发现下一件该做的事、何时验证、何时才算真正完成）
+    <br>→ <strong>Graph 工程 Graph Engineering</strong>（描述一种更高层的编排视角：把 Agent 循环、确定性程序和人工审批组织成显式的执行图，其中节点承担具体能力，边规定路由与依赖，结构化状态沿边传递并在关键边界处持久化）；
+    <br>五者不是替代关系，而是层层包含的，每一层都在前一层的基础上扩展了工程师的关注范围和影响力。<strong>当各家模型的能力越来越接近、不再是决定性的差异因素时，竞争优势就转移到了模型之外的工程实践。</strong>
+    <br>from <a href="https://github.com/bojieli/ai-agent-book/blob/main/book/chapter1.md">《深入理解 AI Agent》第 1 章 从提示工程到 Loop 工程</a>
+  </p>
+
   <p>
     Prompt engineering 关注“这句话怎么写”；<strong>context engineering</strong> 关注
     “这一次调用应该看到哪些信息、以什么结构、按什么顺序”。后者包含前者，也包含检索结果、
@@ -177,9 +188,9 @@ needs_human：信息不足或拿不准
   </table>
 
   <p>
-    Anthropic 的 few-shot 指南强调：示例要<strong>相关、格式一致、标签平衡</strong>，
+    Anthropic 的 Prompting best practices 强调：示例要<strong>相关、格式一致、标签平衡</strong>，
     并且要覆盖你真正关心的边界。示例的顺序也会影响行为；不要把测试集原文放进示例，
-    否则评测分数会虚高。<a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/few-shot-examples">Anthropic — Few-shot examples</a>
+    否则评测分数会虚高。<a href="https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices">Anthropic — Prompting best practices（examples）</a>
   </p>
 
   <div class="callout note">
@@ -414,6 +425,12 @@ python3 eval.py --backend llm</code></pre>
     </tbody>
   </table>
 
+  <p class="sidenote">
+    <strong>SLO</strong>（Service Level Objective）：服务等级目标，如“99.9% 成功”
+    “P95 延迟 &lt; 200 ms”；由 SLI 支撑，区别于对外承诺的 SLA。先定目标线，
+    再比较 baseline 与 engineered。
+  </p>
+
   <p>
     最大的认知转变是：<strong>prompt 不是“说话方式”，而是接口设计。</strong>
     你写 system prompt 的方式，应该像写 OpenAPI 与错误码一样：可枚举、可校验、可回归测试。
@@ -421,16 +438,18 @@ python3 eval.py --backend llm</code></pre>
 
   <div class="source-card">
     <div class="label">本课精读</div>
-    <h3>Anthropic — Prompt engineering overview</h3>
+    <h3>Anthropic — Prompt engineering：overview + best practices</h3>
     <p>
-      读 clear and direct、system prompts、examples、output formats 几节（约 15 分钟）。
+      先读 <a href="https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/overview">Overview</a>（约 5 分钟），
+      再读 <a href="https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices">Prompting best practices</a>
+      中的 Be clear and direct、Use examples effectively、Give Claude a role、Long context prompting、Output and formatting 几节（约 15 分钟）。
       重点看“如何把意图写成可执行约束”，而不是收集 prompt 技巧。
     </p>
-    <p><a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/overview">docs.anthropic.com/.../prompt-engineering/overview</a></p>
     <p class="small">
-      选读：<a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/system-prompts">System prompts</a> ·
-      <a href="https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/few-shot-examples">Few-shot examples</a> ·
-      <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective Context Engineering</a>
+      选读：<a href="https://developers.openai.com/api/docs/guides/prompt-engineering?api-mode=chat">OpenAI — Prompt engineering</a> ·
+      <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Anthropic — Effective Context Engineering</a> ·
+      <a href="https://blog.langchain.com/context-engineering-for-agents/">LangChain — Context Engineering for Agents</a> ·
+      <a href="https://github.com/bojieli/ai-agent-book/blob/main/book/chapter1.md">《深入理解 AI Agent》第 1 章</a>
     </p>
   </div>
 

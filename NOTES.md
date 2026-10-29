@@ -40,6 +40,7 @@
 - 2026-10-25：Lesson 0006《RAG II：让答案可被核查》交付（含 `labs/0006-rerank-citations`：15→5 重排、引用协议、11 例答案级评测、28 个离线测试）。
 - 2026-10-27：Lesson 0007《状态与记忆：上下文不是记忆》交付（含 `labs/0007-state-memory`：state / compaction / long-term memory / checkpoint-resume，4 个场景、23 个离线测试）。
 - 2026-10-28：同步 OpenAI 文档迁移（guides → developers.openai.com，Text generation 拆分）；更新 Lesson 0001/0004、RESOURCES、LLM 调用清单链接，并在 Lesson 0001 增加 Chat Completions ↔ Responses 术语对照与兼容性说明。
+- 2026-10-29：Lesson 0002 增补“AI 应用工程范式变迁”与 SLO 两条 sidenote；更新 Anthropic Prompt engineering 精读链接（原 system-prompts / few-shot-examples 已合并到 claude-prompting-best-practices），并补充 OpenAI、LangChain 与《深入理解 AI Agent》选读。
 - 尚未获得 lab 1–7 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
 - 第 1 课的核心观察：模型只输出 tool_calls，不执行；temperature=0 不保证绝对确定；结构化输出必须 schema + 校验 + 修复循环。
 - 第 2 课的核心观察：baseline prompt 23 token，exact 0.500、schema 0.800；engineered prompt 339 token，exact 1.000、schema 1.000。上下文工程的交易是“用预算买确定性”，不是越长越好。
