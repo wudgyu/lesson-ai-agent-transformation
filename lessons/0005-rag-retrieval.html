@@ -62,6 +62,9 @@
 
   <div class="callout win">
     <span class="label">本课结束时，你能</span>
+    <p class="sidenote">
+      MRR：Mean Reciprocal Rank，平均倒数排名
+    </p>
     <p>① 解释为什么 RAG 的瓶颈通常在检索；② 为一份私有语料设计 chunk 与混合检索；
     ③ 用 20 例评测产出 Recall@k / MRR / 上下文成本报告，并把失败归因到 chunk、tokenizer、检索器或标签。</p>
   </div>
@@ -83,6 +86,9 @@
     <a href="https://arxiv.org/abs/2307.03172">Lost in the Middle (arXiv:2307.03172)</a>
   </p>
 
+  <p class="sidenote">
+    RAG：Retrieval-Augmented Generation，检索增强生成
+  </p>
   <p>
     RAG（Retrieval-Augmented Generation）的原始论文把它描述为“参数化记忆 + 非参数化记忆”的组合：
     模型负责语言与推理，外部索引负责事实与出处。
@@ -119,6 +125,9 @@
     上线就崩”的根源。
   </p>
 
+  <p class="sidenote">
+    RRF：Reciprocal Rank Fusion，倒数排名融合
+  </p>
   <figure class="diagram">
     <svg viewBox="0 0 760 330" role="img" aria-labelledby="rag-title rag-desc">
       <title id="rag-title">RAG 的离线索引与在线查询两条流水线</title>
@@ -359,6 +368,9 @@ findRecentOrders 中把批量查询
 
   <h3>BM25 在做什么</h3>
 
+  <p class="sidenote">
+    TF-IDF：Term Frequency–Inverse Document Frequency，词频–逆文档频率
+  </p>
   <p>
     BM25 建立在 TF-IDF 上：一个词越罕见（IDF 高），命中它越值钱；一个词在文档里重复太多次，
     收益会饱和（<code>k1</code>）；文档越长，越要打折（<code>b</code>）。典型参数是
@@ -373,10 +385,12 @@ findRecentOrders 中把批量查询
   <p>
     因为 BM25 只看词面，tokenizer 的质量直接决定召回。对代码与中文语料，至少要做三件事：
   </p>
-
   <ul>
     <li><strong>拆标识符</strong>：<code>findRecentOrders</code> → <code>find</code> / <code>recent</code> / <code>orders</code>；<code>db_pool.used</code> → <code>db</code> / <code>pool</code> / <code>used</code>。</li>
     <li><strong>保留整串</strong>：同时保留 <code>findrecentorders</code> 与 <code>db_pool.used</code>，精确查询才有强信号。</li>
+    <p class="sidenote">
+      bigram：二元语法
+    </p>
     <li><strong>中文 bigram</strong>：没有分词词典时，<code>数据库连接池</code> 切成 <code>数据</code>/<code>据库</code>/<code>库连</code>/<code>连接</code>/<code>接池</code>，比按空格切可靠得多。</li>
   </ul>
 
@@ -396,7 +410,7 @@ findRecentOrders 中把批量查询
 
   <p>
     BM25 的分数和 cosine 的分数尺度不同，直接相加没有意义。
-    Reciprocal Rank Fusion（RRF）只看排名：
+    Reciprocal Rank Fusion（RRF，倒数排名融合）只看排名：
   </p>
 
   <div class="formula">
