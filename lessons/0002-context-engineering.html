@@ -28,13 +28,20 @@
   </p>
 
   <details class="recall">
-    <summary>90 秒回忆：先别往下看，回答第 1 课的三件事</summary>
-    <ol>
-      <li>上下文窗口是输入与输出共享的吗？</li>
-      <li><code>temperature=0</code> 能保证每次输出完全一致吗？</li>
-      <li>模型返回 <code>tool_calls</code> 后，谁执行工具？</li>
-    </ol>
-    <p><strong>对答案：</strong>是，共享同一个 token 上限；不能，只降低随机性；你的代码执行，模型只发请求。</p>
+    <summary>90 秒回忆：先别往下看，回答第 1 课的三件事
+      <ol>
+        <li>上下文窗口是输入与输出共享的吗？</li>
+        <li><code>temperature=0</code> 能保证每次输出完全一致吗？</li>
+        <li>模型返回 <code>tool_calls</code> 后，谁执行工具？</li>
+      </ol>
+    </summary>
+    <p><strong>对答案：</strong>
+      <ol>
+        <li>是，共享同一个 token 上限；</li>
+        <li>不能，只降低随机性；</li>
+        <li>你的代码执行，模型只发请求。</li>
+      </ol>
+    </p>
     <p class="small">有一题答不上来？先回 <a href="0001-llm-client.html">第 1 课</a> 补一眼，再回来。</p>
   </details>
 

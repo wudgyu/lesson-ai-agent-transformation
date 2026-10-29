@@ -28,13 +28,20 @@
   </p>
 
   <details class="recall">
-    <summary>先测一下直觉：3 个判断题</summary>
-    <ol>
-      <li>模型会自己执行工具吗？</li>
-      <li><code>temperature=0</code> 能保证每次输出完全一致吗？</li>
-      <li>上下文窗口是“输入 + 输出”共享的预算吗？</li>
-    </ol>
-    <p><strong>对答案：</strong>不会，执行的是你的代码；不能，它只降低随机性；是，输入与输出共用同一个窗口。</p>
+    <summary>先测一下直觉：3 个判断题
+        <ol>
+          <li>模型会自己执行工具吗？</li>
+          <li><code>temperature=0</code> 能保证每次输出完全一致吗？</li>
+          <li>上下文窗口是“输入 + 输出”共享的预算吗？</li>
+        </ol>
+      </summary>
+    <p><strong>对答案：</strong>
+      <ol>
+        <li>不会，执行的是你的代码；</li>
+        <li>不能，它只降低随机性；</li>
+        <li>是，输入与输出共用同一个窗口。</li>
+      </ol>
+    </p>
     <p class="small">如果三题都答对，这一课会给你一套可复用的 client 与 schema 契约；如果有一题犹豫，正好补上。</p>
   </details>
 

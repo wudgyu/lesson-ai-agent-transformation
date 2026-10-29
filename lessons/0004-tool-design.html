@@ -28,13 +28,21 @@
   </p>
 
   <details class="recall">
-    <summary>60 秒回忆：先别往下看，回答第 3 课的三个问题</summary>
-    <ol>
-      <li>Agent 循环的四个零件是什么？</li>
-      <li>模型真的“执行”了工具吗？</li>
-      <li>为什么 assistant 的 <code>tool_calls</code> 与 <code>tool</code> 消息必须用 id 配对？</li>
-    </ol>
-    <p><strong>对答案：</strong>LLM + Tools + Loop + Stop condition；没有，执行的是你的代码；因为下一轮 API 需要一一对应，缺一个就 400。</p>
+    <summary>60 秒回忆：先别往下看，回答第 3 课的三个问题
+      <ol>
+        <li>Agent 循环的四个零件是什么？</li>
+        <li>模型真的“执行”了工具吗？</li>
+        <li>为什么 assistant 的 <code>tool_calls</code> 与 <code>tool</code> 消息必须用 id 配对？</li>
+      </ol>
+    </summary>
+    <p><strong>对答案：</strong>
+      <ol>
+        <li>LLM + Tools + Loop + Stop condition；</li>
+        <li>没有，执行的是你的代码；</li>
+        <li>因为下一轮 API 需要一一对应，缺一个就 400。</li>
+      </ol>
+    </p>
+    <p class="small">有一题答不上来？先回 <a href="0003-agent-loop.html">第 3 课</a> 补一眼，再回来。</p>
   </details>
 
   <div class="toc no-print">

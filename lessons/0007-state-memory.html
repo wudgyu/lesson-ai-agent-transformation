@@ -28,13 +28,20 @@
   </p>
 
   <details class="recall">
-    <summary>90 秒回忆：先别往下看，回答第 6 课的三件事</summary>
-    <ol>
-      <li>Rerank 能修哪类失败，不能修哪类？</li>
-      <li>引用 ID 有效、quote 也在来源里，为什么答案仍可能错？</li>
-      <li>语料里没有答案却硬答，对应哪个 failure point？</li>
-    </ol>
-    <p><strong>对答案：</strong>能修“候选里有但排太低”，不能修“候选集没召回”；quote containment 不检查结论蕴含；FP1 Missing Content，正确行为是拒答。</p>
+    <summary>90 秒回忆：先别往下看，回答第 6 课的三件事
+      <ol>
+        <li>Rerank 能修哪类失败，不能修哪类？</li>
+        <li>引用 ID 有效、quote 也在来源里，为什么答案仍可能错？</li>
+        <li>语料里没有答案却硬答，对应哪个 failure point？</li>
+      </ol>
+    </summary>
+    <p><strong>对答案：</strong>
+      <ol>
+        <li>能修“候选里有但排太低”，不能修“候选集没召回”；</li>
+        <li>quote containment 不检查结论蕴含；</li>
+        <li>FP1 Missing Content，正确行为是拒答。</li>
+      </ol>
+    </p>
     <p class="small">有一题答不上来？先回 <a href="0006-rerank-citations.html">第 6 课</a> 补一眼，再回来。</p>
   </details>
 
