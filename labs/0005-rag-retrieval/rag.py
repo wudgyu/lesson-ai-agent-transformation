@@ -77,6 +77,7 @@ def _document_title(path: Path, text: str) -> str:
 
 
 def _slug(text: str) -> str:
+    """把任意文本转成 URL/ID 友好的 短横线连接的标识符，并保证永不返回空串"""
     slug = re.sub(r"[^\w一-鿿-]+", "-", text.lower(), flags=re.UNICODE)
     slug = re.sub(r"-+", "-", slug).strip("-_")
     return slug or "section"
@@ -89,6 +90,7 @@ def chunk_structure(doc: Document) -> List[Chunk]:
     contextual retrieval：不改原文，只让 chunk 不再“失去上下文”。
     """
     lines = doc.text.splitlines()
+    # 非markdown文件作为一个chunk返回
     if not doc.doc_id.lower().endswith(".md"):
         return [
             Chunk(
@@ -101,6 +103,7 @@ def chunk_structure(doc: Document) -> List[Chunk]:
             )
         ]
 
+    # 扫描标题以收集标题、章节
     sections: List[Tuple[str, int, int]] = []  # (section title, start idx, end idx)
     title_idx = None
     for idx, line in enumerate(lines):
@@ -111,10 +114,11 @@ def chunk_structure(doc: Document) -> List[Chunk]:
             sections.append((line[3:].strip(), idx, len(lines)))
 
     for i in range(len(sections) - 1):
-        sections[i] = (sections[i][0], sections[i][1], sections[i + 1][1])
+        sections[i] = (sections[i][0], sections[i][1], sections[i + 1][1]) # 修正非最后一个章节的结束位置：第i个章节的结束行号=第i+1的起始行号
 
+    # 没有二级章节时兜底处理
     if not sections:
-        body = "\n".join(lines[1:] if title_idx is not None else lines).strip()
+        body = "\n".join(lines[1:] if title_idx is not None else lines).strip() # 注意：markdown文件的首行必须是标题，即“# xxx”
         if not body:
             return []
         return [
@@ -131,11 +135,11 @@ def chunk_structure(doc: Document) -> List[Chunk]:
     chunks: List[Chunk] = []
     used = set()
 
-    # 标题与第一个二级标题之间的前言（例如“摘要”之前的内容）
+    # 生成概述chunk
     first_start = sections[0][1]
     preamble_end = first_start
     preamble_start = (title_idx + 1) if title_idx is not None else 0
-    preamble = "\n".join(lines[preamble_start:preamble_end]).strip()
+    preamble = "\n".join(lines[preamble_start:preamble_end]).strip() # 标题与第一个二级标题之间的前言
     if preamble:
         heading = "%s > 概述" % doc.title
         chunks.append(
@@ -149,6 +153,7 @@ def chunk_structure(doc: Document) -> List[Chunk]:
             )
         )
 
+    # 生成二级章节chunk
     for title, start, end in sections:
         body = "\n".join(lines[start:end]).strip()
         if not body:
@@ -194,14 +199,16 @@ def chunk_naive(doc: Document, size: int = 400, overlap: int = 80) -> List[Chunk
     start = 0
     index = 0
     while start < len(text):
+        # 确定窗口位置
         end = min(start + size, len(text))
         if end < len(text):
-            window_start = start + max(1, size // 2)
-            newline = text.rfind("\n", window_start, end)
-            space = text.rfind(" ", window_start, end)
-            cut = max(newline, space)
+            window_start = start + max(1, size // 2) # 通过对size整除2并向下取整，将窗口限制在后半段
+            newline = text.rfind("\n", window_start, end) # 从后半段窗口最右侧往左找换行符
+            space = text.rfind(" ", window_start, end) # 从后半段窗口最右侧往左找空格
+            cut = max(newline, space) # 取换行符、空格更靠右的一个作为断点
             if cut > start:
                 end = cut + 1
+        # 生成chunk
         piece = text[start:end].strip()
         if piece:
             start_line = text.count("\n", 0, start) + 1
@@ -219,7 +226,8 @@ def chunk_naive(doc: Document, size: int = 400, overlap: int = 80) -> List[Chunk
             index += 1
         if end >= len(text):
             break
-        next_start = end - overlap
+        # 滑动到下一窗口
+        next_start = end - overlap # 回退overlap实现重叠
         if next_start <= start:
             next_start = end
         start = next_start
@@ -466,7 +474,7 @@ def rrf_fuse(
     k: int = 60,
     weights: Optional[Sequence[float]] = None,
 ) -> List[Tuple[str, float]]:
-    """Reciprocal Rank Fusion：score = Σ weight / (k + rank)。
+    """Reciprocal Rank Fusion，倒数排名融合：score = Σ weight / (k + rank)。
 
     用排名而不是原始分数，避免 BM25 分数与 cosine 分数的尺度不可比。
     """
@@ -478,10 +486,10 @@ def rrf_fuse(
         raise ValueError("k must be positive")
 
     scores: Dict[str, float] = {}
-    for ranking, weight in zip(rankings, weights):
-        for rank, chunk_id in enumerate(ranking, start=1):
-            scores[chunk_id] = scores.get(chunk_id, 0.0) + weight / (k + rank)
-    return sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    for ranking, weight in zip(rankings, weights): # 每路排名结果配一个权重，逐路处理
+        for rank, chunk_id in enumerate(ranking, start=1): # 排名从1而不是0开始，以避免首位分数过高
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + weight / (k + rank) # 进行倒数排名融合
+    return sorted(scores.items(), key=lambda item: (-item[1], item[0])) # 排序返回：先按分数降序（分数越高越靠前），再按 chunk_id 字典序升序，保证结果确定性
 
 
 def _dot(a: Sequence[float], b: Sequence[float]) -> float:
