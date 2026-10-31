@@ -18,6 +18,7 @@
 ## 环境
 
 - Linux / WSL2 (Debian)，Python 3.9.2，`openai` 1.109.1 已安装。
+- **LangGraph lab 需要 Python ≥ 3.10**；用 `python3.12 -m venv` 或 `uv venv --python 3.12` 建独立环境，不改系统 Python。
 - 模型通过任意 OpenAI-compatible API 接入（`.env` 配置 `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`）。
 - 浏览器打开方式优先 `sensible-browser`；WSL 下如失败，用 Windows 侧打开路径。
 
@@ -41,13 +42,15 @@
 - 2026-10-27：Lesson 0007《状态与记忆：上下文不是记忆》交付（含 `labs/0007-state-memory`：state / compaction / long-term memory / checkpoint-resume，4 个场景、23 个离线测试）。
 - 2026-10-28：同步 OpenAI 文档迁移（guides → developers.openai.com，Text generation 拆分）；更新 Lesson 0001/0004、RESOURCES、LLM 调用清单链接，并在 Lesson 0001 增加 Chat Completions ↔ Responses 术语对照与兼容性说明。
 - 2026-10-29：Lesson 0002 增补“AI 应用工程范式变迁”与 SLO 两条 sidenote；更新 Anthropic Prompt engineering 精读链接（原 system-prompts / few-shot-examples 已合并到 claude-prompting-best-practices），并补充 OpenAI、LangChain 与《深入理解 AI Agent》选读。
-- 尚未获得 lab 1–7 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
+- 2026-10-31：Lesson 0008《LangGraph I：把循环画成图》交付（含 `labs/0008-langgraph-basics`：StateGraph、reducer、条件边、预算终止、13 个离线测试；新增 `reference/langgraph-checklist.html`）。当前 LangGraph 1.2.x 要求 Python >= 3.10，lab 需用 3.12 建 venv；旧 lab 仍兼容 3.9。已在 Python 3.12.16 + LangGraph 1.2.19 上跑通全部测试。
+- 尚未获得 lab 1–8 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
 - 第 1 课的核心观察：模型只输出 tool_calls，不执行；temperature=0 不保证绝对确定；结构化输出必须 schema + 校验 + 修复循环。
 - 第 2 课的核心观察：baseline prompt 23 token，exact 0.500、schema 0.800；engineered prompt 339 token，exact 1.000、schema 1.000。上下文工程的交易是“用预算买确定性”，不是越长越好。
 - 第 5 课的核心观察：离线 `vector(lexical)` 只是词面向量，不能证明语义检索的收益；真实结论要等用户配置 embedding 后跑 dense/hybrid。
 - 第 6 课的核心观察：`fixtures` 只验证 checker，不代表模型能力；真实答案级结论必须跑 `--backend llm`。A09 是 quote containment 的盲区，需要 NLI / LLM judge / 人工审计。
 - 第 7 课的核心观察：`none`（硬截断）能答对最终问题但丢掉最初约束；compaction 能保住约束，但默认 0.70/keep4 会压缩 8 次（thrash），调到 0.90/keep2 后只压 2 次、峰值上升但最终 tokens 更低。长期记忆改变第一个工具（health → runbook）；旧记忆 40 被新证据 50 supersede；resume 后副作用不重复。
-- 已补 D1/D2 作为 Lesson 0001/0002，并把原 L1–L5 顺延为 L3–L7；roadmap、labs、glossary 与所有交叉链接已同步。
+- 第 8 课的核心观察：StateGraph 不替你调用模型或执行工具，只调度；节点返回增量，默认通道是 LastValue（列表会被整体替换）；`rounds` 漏掉 `operator.add` 会让预算永不触发；`max_rounds` 是应用预算，`recursion_limit` 只是框架兜底；未执行的 tool_call 也要补 `SKIPPED` ToolMessage，否则消息协议不完整。
+- 已补 D1/D2 作为 Lesson 0001/0002，并把原 L1–L5 顺延为 L3–L8；roadmap、labs、glossary 与所有交叉链接已同步。
 
 ## 待确认
 

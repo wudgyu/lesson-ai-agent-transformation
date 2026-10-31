@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 8 课 · LangGraph I：把循环画成图</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 第 2 周 · 第 8 课</div>
+  <h1>把循环画成图</h1>
+  <p class="subtitle">StateGraph 的价值不是少写代码，而是让状态、归约与控制流变成可检查的对象。</p>
+  <div class="meta">
+    <span>Lesson 0008</span>
+    <span>约 95 分钟</span>
+    <span>阅读 32′ · 测验 6′ · Lab 55′</span>
+    <span>无需 API key · Python ≥ 3.10</span>
+  </div>
+
+  <p class="lede">
+    第 3 课你写了一个 while 循环：模型决策，代码执行工具，观察结果再回到模型。
+    第 7 课你把“记住什么”拆成了 context、state 与 memory。这一课把两者装进一张图：
+    节点负责一步计算，边负责控制流，state 负责在节点之间传递事实。
+    框架不会替你写 prompt，也不会替你执行工具；它替你管理的是<strong>控制流的形状</strong>。
+  </p>
+
+  <details class="recall">
+    <summary>90 秒回忆：先别往下看，回答第 7 课的三件事
+      <ol>
+        <li>Context、State、Memory 的生命周期分别是什么？</li>
+        <li>Compaction 必须优先保留哪四类信息？</li>
+        <li>Checkpoint/resume 后，最危险的操作是什么？</li>
+      </ol>
+    </summary>
+    <p><strong>对答案：</strong>
+      <ol>
+        <li>Context 是这一次模型调用；State 是这次任务/会话；Memory 跨会话、跨任务。</li>
+        <li>任务约束、决策、未解决问题、带来源的事实。</li>
+        <li>重复执行有副作用的写操作；只读工具可以重放，写工具必须幂等或跳过。</li>
+      </ol>
+    </p>
+    <p class="small">有一题答不上来？先回 <a href="0007-state-memory.html">第 7 课</a> 补一眼，再回来。</p>
+  </details>
+
+  <div class="toc no-print">
+    <div class="toc-title">本课地图</div>
+    <ol>
+      <li><a href="#why">为什么把循环画成图</a></li>
+      <li><a href="#state">State 是通道，不是对象</a></li>
+      <li><a href="#edges">节点、边与路由</a></li>
+      <li><a href="#rebuild">同一个 Agent，换一种表达</a></li>
+      <li><a href="#stop">停止条件与失败路径</a></li>
+      <li><a href="#tradeoff">框架给了什么，没给什么</a></li>
+      <li><a href="#quiz">检验一下</a></li>
+      <li><a href="#lab">Lab：用 StateGraph 重建 mini-agent</a></li>
+      <li><a href="#java">和 Java 后端对照</a></li>
+    </ol>
+  </div>
+
+  <div class="callout win">
+    <span class="label">本课结束时，你能</span>
+    <p>① 把第 3 课的 while 循环逐行映射成 StateGraph；
+    ② 写对 reducer，解释“默认覆盖”和“append”分别会发生什么；
+    ③ 用条件边实现 tools / finalize / budget 三条路径，并说清应用预算与框架上限的分工。</p>
+  </div>
+
+  <h2 id="why"><span class="num">01</span>为什么把循环画成图<a class="anchor" href="#why">¶</a></h2>
+
+  <p>
+    第 3 课的循环大约是这样：<code>messages</code> 是局部变量，控制流藏在 <code>for</code> 与
+    <code>if</code> 里，<code>trace</code> 是手工 append 的列表。它能跑，但一旦要加“人工审批”、
+    “崩溃恢复”、“并行工具”、“按节点重试”，这些需求会同时改状态结构与控制流，循环会迅速变成一团。
+  </p>
+
+  <p>
+    LangGraph 的 StateGraph 把循环拆成三个显式概念：
+    <strong>state</strong>（在节点之间传递的共享数据）、<strong>node</strong>（一步计算）、
+    <strong>edge</strong>（控制流）。你把图编译出来，框架负责按边推进、按 reducer 合并状态。
+    <a href="https://docs.langchain.com/oss/python/langgraph/thinking-in-langgraph">Thinking in LangGraph</a>
+  </p>
+
+  <table>
+    <thead><tr><th>关注点</th><th>第 3 课的 while 循环</th><th>StateGraph</th></tr></thead>
+    <tbody>
+      <tr><td>状态</td><td>局部变量，随手 append</td><td>显式 schema + 每条通道的 reducer</td></tr>
+      <tr><td>控制流</td><td>if / for 嵌在函数里</td><td>节点 + 边，可渲染、可检查</td></tr>
+      <tr><td>持久化</td><td>自己序列化整个对象</td><td>checkpointer 按 super-step 持久化（下一课）</td></tr>
+      <tr><td>观测</td><td>手工 print / trace</td><td><code>stream_mode</code> 推每个节点的增量</td></tr>
+      <tr><td>测试</td><td>只能测整个循环</td><td>节点、路由函数、reducer 可分别测</td></tr>
+      <tr><td>人工介入</td><td>自己加暂停/恢复逻辑</td><td><code>interrupt()</code> + checkpointer（第 9 课）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <span class="label">Java 后端对照</span>
+    <p>
+      这不是“把代码换个写法”，而是把<strong>过程式循环</strong>升级成<strong>显式状态机</strong>。
+      节点像 transition / command handler，边像 guard，reducer 像聚合根的 merge 函数，
+      <code>compile()</code> 像启动时的图校验。你熟悉的状态机、幂等、事务日志，
+      都能在这张图上找到对应物。
+    </p>
+  </div>
+
+  <div class="callout warn">
+    <span class="label">不要为了图而图</span>
+    <p>
+      如果流程就是“一次模型调用 + 一次工具调用 + 返回”，一个函数更清楚。
+      图适合的是<strong>有分支、有循环、需要持久化/暂停/观测</strong>的长任务。
+      Anthropic 的建议是：先用最简单的方案，复杂度只在它买到可靠性时才引入。
+      <a href="https://www.anthropic.com/engineering/building-effective-agents">Building Effective Agents</a>
+    </p>
+  </div>
+
+  <h2 id="state"><span class="num">02</span>State 是通道，不是对象<a class="anchor" href="#state">¶</a></h2>
+
+  <p>
+    在 LangGraph 里，state schema 的每个字段是一条<strong>通道（channel）</strong>。
+    节点不直接改整块 state，而是返回一个<strong>增量</strong>；通道的 reducer 决定增量怎么合并。
+    公式只有一行：
+  </p>
+
+  <div class="formula">
+    state<sub>t+1</sub> = <strong>merge</strong>(state<sub>t</sub>, node_update)
+  </div>
+
+  <p>
+    没有 reducer 的通道使用 <code>LastValue</code>：新值直接覆盖旧值。带
+    <code>Annotated[..., reducer]</code> 的通道则调用你的合并函数。下面的 schema 把三种最常用的语义放在一起：
+  </p>
+
+  <pre><code>from typing import Annotated, Any, Dict, List, TypedDict
+from langchain_core.messages import AnyMessage
+from langgraph.graph.message import add_messages
+import operator
+
+class AgentState(TypedDict):
+    # append；同 id 的消息更新而不是重复追加
+    messages: Annotated[List[AnyMessage], add_messages]
+    # 每次模型调用 +1
+    rounds: Annotated[int, operator.add]
+    # 每次工具调用追加一条审计事件
+    tool_events: Annotated[List[Dict[str, Any]], operator.add]
+    # 默认 LastValue：后写覆盖先写
+    max_rounds: int
+    answer: str
+    stop_reason: str</code></pre>
+
+  <table>
+    <thead><tr><th>写法</th><th>合并语义</th><th>适合</th></tr></thead>
+    <tbody>
+      <tr><td><code>field: int</code></td><td>LastValue：新值覆盖旧值</td><td>answer、phase、停止原因</td></tr>
+      <tr><td><code>Annotated[list, add_messages]</code></td><td>追加；同 id 更新；支持删除标记</td><td>messages</td></tr>
+      <tr><td><code>Annotated[int, operator.add]</code></td><td>相加</td><td>轮数、token 计数、重试次数</td></tr>
+      <tr><td><code>Annotated[dict, merge_facts]</code></td><td>自定义：按 key 合并、冲突标记</td><td>facts、决策、副作用记录</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <code>add_messages</code> 不是简单的 <code>list.append</code>：新 id 会追加，已存在的 id 会
+    <strong>更新原消息</strong>，字典会被反序列化成消息对象。
+    <a href="https://reference.langchain.com/python/langgraph/graph/message/add_messages">add_messages reference</a>
+    这正好对应第 7 课的要求：消息是事件流，不是可以随意拼接的字符串。
+  </p>
+
+  <div class="callout note">
+    <span class="label">MessagesState 是预置捷径</span>
+    <p>
+      LangGraph 提供预置的 <code>MessagesState</code>，其中 <code>messages</code> 已经用
+      <code>add_messages</code> 定义好，可以直接继承再加字段。本课手写 schema，
+      是为了让你看见每条通道的合并语义；理解之后再换预置类，不会失去控制。
+    </p>
+  </div>
+
+  <p>
+    节点只返回自己改动的字段：
+  </p>
+
+  <pre><code>def model_node(state: AgentState) -&gt; Dict[str, Any]:
+    response = llm.invoke(state["messages"], registry.schemas())
+    # 不返回完整 state，只返回增量
+    return {"messages": [response], "rounds": 1}</code></pre>
+
+  <div class="callout warn">
+    <span class="label">reducer 写错，状态就会悄悄丢</span>
+    <p>
+      把 <code>messages</code> 的注解拿掉，<code>model</code> 节点返回的一条 AIMessage 会
+      <strong>替换</strong>整个消息列表；下一轮 <code>tools</code> 节点就看不到之前的对话与工具结果。
+      把 <code>rounds</code> 的注解拿掉，它永远是 1，预算判断永远不触发。
+      这两件事都不会报错，只会让 Agent 行为变得“莫名其妙”。
+    </p>
+  </div>
+
+  <h2 id="edges"><span class="num">03</span>节点、边与路由<a class="anchor" href="#edges">¶</a></h2>
+
+  <p>
+    节点就是一个函数：接收 state（也可以接收 <code>config</code> / <code>runtime</code>），
+    返回一个增量字典。固定边用 <code>add_edge</code>；需要根据状态选择下一步时，用
+    <code>add_conditional_edges</code>。
+  </p>
+
+  <pre><code>from langgraph.graph import END, START, StateGraph
+
+builder = StateGraph(AgentState)
+builder.add_node("model", model_node)
+builder.add_node("tools", tools_node)
+builder.add_node("finalize", finalize_node)
+builder.add_node("budget_exceeded", budget_exceeded_node)
+
+builder.add_edge(START, "model")
+builder.add_conditional_edges(
+    "model",
+    route_after_model,
+    {
+        "tools": "tools",
+        "final": "finalize",
+        "budget": "budget_exceeded",
+    },
+)
+builder.add_edge("tools", "model")
+builder.add_edge("finalize", END)
+builder.add_edge("budget_exceeded", END)
+
+graph = builder.compile()</code></pre>
+
+  <p>
+    路由函数只读取 state，返回一个 key；映射表把 key 翻成节点名。<code>END</code> 是特殊的终止节点，
+    也可以直接由路由函数返回。
+  </p>
+
+  <pre><code>def route_after_model(state: AgentState) -&gt; str:
+    last = state["messages"][-1]
+    calls = getattr(last, "tool_calls", None) or []
+
+    if not calls:
+        return "final"          # 模型给出最终答案
+    if state["rounds"] &gt;= state["max_rounds"]:
+        return "budget"         # 应用层预算耗尽
+    return "tools"              # 还有工具要执行</code></pre>
+
+  <p>
+    <code>compile()</code> 会校验图的连接与 schema，然后返回一个可执行的图；
+    <code>invoke()</code> 驱动它跑完。图不是模型，也不是工具运行时——它只负责调度。
+  </p>
+
+  <div class="callout note">
+    <span class="label">还有两种路由写法，先知道存在</span>
+    <p>
+      <code>Command(update={...}, goto="node")</code> 把状态更新和下一步合并进节点返回值；
+      <code>Send</code> 用于 map-reduce 式的并行 fan-out。它们会让控制流更内聚，但也更难一眼看全。
+      本课先把显式条件边用熟；需要时再读
+      <a href="https://docs.langchain.com/oss/python/langgraph/use-graph-api">Use the graph API</a>。
+    </p>
+  </div>
+
+  <h2 id="rebuild"><span class="num">04</span>同一个 Agent，换一种表达<a class="anchor" href="#rebuild">¶</a></h2>
+
+  <p>
+    现在把第 3 课的 loop 原样搬进图。关键点是：<strong>模型仍然只输出 tool_calls，工具仍然由你的代码执行</strong>。
+    框架没有替你调用模型，也没有替你执行工具；它只是把“什么时候调用谁”显式化了。
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 720 440" role="img" aria-labelledby="graph-title graph-desc">
+      <title id="graph-title">Lesson 0008 的 Agent 状态图</title>
+      <desc id="graph-desc">START 进入 model；model 根据是否有 tool_calls 路由到 tools、finalize 或 budget_exceeded；tools 回到 model；finalize 与 budget_exceeded 进入 END。</desc>
+      <defs>
+        <marker id="arrow-lg8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--rule-strong)"></path>
+        </marker>
+        <marker id="arrow-lg8-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+        </marker>
+      </defs>
+
+      <rect class="d-node-io" x="315" y="16" width="90" height="30" rx="5"></rect>
+      <text class="d-text" x="360" y="36">START</text>
+
+      <rect class="d-node-accent" x="270" y="86" width="180" height="58" rx="6"></rect>
+      <text class="d-text" x="360" y="110">model</text>
+      <text class="d-sub" x="360" y="130">LLM decides · emits tool_calls</text>
+
+      <rect class="d-node" x="40" y="200" width="150" height="58" rx="6"></rect>
+      <text class="d-text" x="115" y="224">finalize</text>
+      <text class="d-sub" x="115" y="244">answer + stop_reason</text>
+
+      <rect class="d-node" x="530" y="200" width="150" height="58" rx="6"></rect>
+      <text class="d-text" x="605" y="224">tools</text>
+      <text class="d-sub" x="605" y="244">execute → ToolMessage</text>
+
+      <rect class="d-node" x="270" y="300" width="180" height="58" rx="6"></rect>
+      <text class="d-text" x="360" y="324">budget_exceeded</text>
+      <text class="d-sub" x="360" y="344">skip calls · structured stop</text>
+
+      <rect class="d-node-io" x="315" y="392" width="90" height="30" rx="5"></rect>
+      <text class="d-text" x="360" y="412">END</text>
+
+      <line class="d-arrow" x1="360" y1="46" x2="360" y2="86" marker-end="url(#arrow-lg8)"></line>
+
+      <path class="d-arrow" d="M270 115 H190 V200" marker-end="url(#arrow-lg8)"></path>
+      <text class="d-label" x="70" y="105">no tool_calls</text>
+
+      <path class="d-arrow" d="M450 115 H605 V200" marker-end="url(#arrow-lg8)"></path>
+      <text class="d-label" x="500" y="105">tool_calls</text>
+
+      <path class="d-arrow-accent" d="M605 258 V282 H470 V144 H450" marker-end="url(#arrow-lg8-accent)"></path>
+      <text class="d-label" x="500" y="298">observation</text>
+
+      <line class="d-arrow" x1="360" y1="144" x2="360" y2="300" marker-end="url(#arrow-lg8)"></line>
+      <text class="d-label" x="372" y="225">rounds ≥ max_rounds</text>
+
+      <line class="d-arrow" x1="360" y1="358" x2="360" y2="392" marker-end="url(#arrow-lg8)"></line>
+
+      <path class="d-arrow-accent" d="M115 258 V407 H315" marker-end="url(#arrow-lg8-accent)"></path>
+    </svg>
+    <figcaption>四条路径：正常结束、继续调工具、预算终止，以及工具回到模型。图把“什么时候结束”变成了一条看得见的边。</figcaption>
+  </figure>
+
+  <p>
+    对照第 3 课的代码，映射关系几乎是一一对应的：
+  </p>
+
+  <table>
+    <thead><tr><th>第 3 课的 while 循环</th><th>第 8 课的图</th></tr></thead>
+    <tbody>
+      <tr><td><code>messages = [...]</code></td><td><code>initial_state()</code> 的 <code>messages</code> 通道</td></tr>
+      <tr><td><code>response = llm.complete(...)</code></td><td><code>model</code> 节点</td></tr>
+      <tr><td><code>for call in tool_calls: registry.execute(...)</code></td><td><code>tools</code> 节点</td></tr>
+      <tr><td><code>if not tool_calls: return answer</code></td><td><code>route_after_model → finalize</code></td></tr>
+      <tr><td><code>for step in range(max_steps)</code></td><td><code>rounds</code> 通道 + <code>budget_exceeded</code></td></tr>
+      <tr><td><code>trace.append(...)</code></td><td><code>tool_events</code> 通道</td></tr>
+      <tr><td><code>raise AgentLoopError</code></td><td>终止节点返回结构化 <code>stop_reason</code></td></tr>
+    </tbody>
+  </table>
+
+  <pre><code>def tools_node(state: AgentState) -&gt; Dict[str, Any]:
+    last = state["messages"][-1]
+    calls = getattr(last, "tool_calls", None) or []
+    messages, events = [], []
+
+    for call in calls:
+        result = registry.execute(call["name"], call["args"])
+        # 每个 tool_call 必须有一条带相同 id 的 ToolMessage
+        messages.append(
+            ToolMessage(
+                content=result,
+                tool_call_id=call["id"],
+                name=call["name"],
+            )
+        )
+        events.append({"tool": call["name"], "result": result})
+
+    return {"messages": messages, "tool_events": events}</code></pre>
+
+  <div class="callout warn">
+    <span class="label">消息协议是硬约束</span>
+    <p>
+      一个 <code>tool_call</code> 如果没有对应的 <code>ToolMessage</code>，下一次真实模型调用会直接报错。
+      预算终止时也一样：未执行的调用要补一条 <code>SKIPPED</code> 的 ToolMessage，而不是默默丢掉。
+      框架不会替你修消息协议。
+    </p>
+  </div>
+
+  <h2 id="stop"><span class="num">05</span>停止条件与失败路径<a class="anchor" href="#stop">¶</a></h2>
+
+  <p>
+    Agent 的停止条件要分三层，而不是只靠一个 <code>max_steps</code>：
+  </p>
+
+  <table>
+    <thead><tr><th>层</th><th>由谁负责</th><th>典型机制</th><th>失败时</th></tr></thead>
+    <tbody>
+      <tr><td>任务层</td><td>模型 + 你的路由</td><td>没有 tool_calls，给出最终答案</td><td>答非所问，但循环结束</td></tr>
+      <tr><td>应用层</td><td>你的路由与预算</td><td>轮数、token、时间、成本上限</td><td>返回结构化 <code>stop_reason</code></td></tr>
+      <tr><td>框架层</td><td>LangGraph</td><td><code>recursion_limit</code>（super-step 上限）</td><td><code>GraphRecursionError</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <code>recursion_limit</code> 是防止图失控的底线，不是业务预算。它统计的是 super-step 数，
+    默认值非常大；如果你把“最多 6 轮”寄托在它身上，报错时你拿不到结构化的失败原因。
+    正确做法是应用层先判断，框架层兜底。
+    <a href="https://docs.langchain.com/oss/python/langgraph/use-graph-api">Use the graph API — recursion limit</a>
+  </p>
+
+  <pre><code>def budget_exceeded_node(state: AgentState) -&gt; Dict[str, Any]:
+    last = state["messages"][-1]
+    calls = getattr(last, "tool_calls", None) or []
+
+    skipped = [
+        ToolMessage(
+            content="SKIPPED: max_rounds reached before this tool could run",
+            tool_call_id=call["id"],
+            name=call["name"],
+        )
+        for call in calls
+    ]
+    text = "达到最大轮数 %d，Agent 已停止。" % state["max_rounds"]
+    return {
+        "messages": skipped + [AIMessage(content=text)],
+        "answer": text,
+        "stop_reason": "max_rounds",
+    }</code></pre>
+
+  <p>
+    失败路径也要分类：<strong>可预期的工具错误</strong>（参数不对、服务不存在）应该变成 observation，
+    让模型有机会换一种方法；<strong>不可预期的节点异常</strong>（代码 bug、依赖挂掉）应该暴露出来，
+    而不是被 <code>except Exception</code> 吞掉。LangGraph 提供 <code>RetryPolicy</code>、节点超时与
+    <code>error_handler</code>，但这些是第 9 课之后的工程化话题；本课先保证失败有结构、可观测。
+  </p>
+
+  <div class="callout note">
+    <span class="label">Java 后端对照</span>
+    <p>
+      应用预算像 SLA / 业务超时，<code>recursion_limit</code> 像熔断器的最大尝试次数：
+      前者决定“这笔任务还值不值得做”，后者只决定“进程别被拖死”。两者不能互相替代。
+    </p>
+  </div>
+
+  <h2 id="tradeoff"><span class="num">06</span>框架给了什么，没给什么<a class="anchor" href="#tradeoff">¶</a></h2>
+
+  <table>
+    <thead><tr><th>框架给你</th><th>框架不给你</th></tr></thead>
+    <tbody>
+      <tr><td>显式 state schema 与 reducer</td><td>正确的 state 设计（该记什么、冲突怎么裁决）</td></tr>
+      <tr><td>条件边、循环、并行分支的调度</td><td>好的 prompt、工具描述与工具粒度</td></tr>
+      <tr><td>图的可视化与编译期校验</td><td>任务是否值得用 Agent</td></tr>
+      <tr><td>checkpoint、interrupt、流式（后续课程）</td><td>评测集、失败分析、成本与延迟预算</td></tr>
+      <tr><td>重试、超时、节点级错误处理</td><td>副作用安全、幂等与权限边界</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    最容易犯的错误是“图洗白”（graph washing）：把一堆设计糟糕的工具和模糊的 prompt 画成一张图，
+    就以为系统变可靠了。图的形状不会提高答案质量；它只让你更容易看见问题在哪一步。
+    Anthropic 反复强调：先判断该不该用 Agent，再选择最简单的编排方式。
+    <a href="https://www.anthropic.com/engineering/building-effective-agents">Building Effective Agents</a>
+    12-Factor Agents 的第 8 条也是“own your control flow”：控制流可以借框架表达，但不能不理解。
+    <a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a>
+  </p>
+
+  <div class="callout warn">
+    <span class="label">框架选型不是本课重点</span>
+    <p>
+      LangGraph 用“显式图”表达控制流；OpenAI Agents SDK 用 Agent / Handoff / Guardrail 表达。
+      两者都能做出生产系统，差别主要在控制流的显式程度与生态。先把一种用透，
+      比在框架之间反复横跳更有价值。
+    </p>
+  </div>
+
+  <h2 id="quiz"><span class="num">07</span>检验一下<a class="anchor" href="#quiz">¶</a></h2>
+
+  <p class="small">先自己想，再点选项。答错会给出解释。</p>
+
+  <div class="quiz" data-quiz>
+    <div class="quiz-q" data-answer="b" data-explain="没有 reducer 的通道是 LastValue：节点返回的新值直接覆盖旧值。列表不会自动 append，这正是 messages 必须用 add_messages 的原因。">
+      <p class="quiz-prompt">一个没有 reducer 的 state 字段，更新语义是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>新值自动追加到旧值后面</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>新值直接覆盖掉原来的旧值</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>旧值覆盖掉刚写入的新值</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>抛出状态合并冲突的错误</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="d" data-explain="节点返回的是增量字典，只包含它改动的字段；未返回的字段保持不变，由对应通道的 reducer 合并。不要原地修改 state，也不要返回完整 state。">
+      <p class="quiz-prompt">StateGraph 的节点应该返回什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>完整的、更新后的 state 对象</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>直接原地修改传入的 state</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>下一个节点名称与运行配置</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>只包含本次改动的增量字典</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="a" data-explain="add_messages 按 id 合并：新 id 追加，已有 id 更新原消息，因此不能用它来保留同 id 的两条不同版本。需要审计历史时，用单独的 events 通道。">
+      <p class="quiz-prompt">使用 add_messages 时，新消息与旧消息 id 相同会怎样？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>用新消息更新同 id 的旧消息</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>保留两条相同 id 的消息</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>删除所有旧消息再追加新消息</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>报错并终止整个图的执行</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="c" data-explain="条件边的路由函数读取 state，返回目标节点名或 END；映射表可以把返回值翻译成节点名。它不返回 state，也不返回模型生成的工具调用。">
+      <p class="quiz-prompt">条件边的路由函数应该返回什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>一个新的 state 字典对象</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>一个布尔值表示是否继续</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>目标节点名称或者 END 终止符</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>模型生成的工具调用列表</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="recursion_limit 是框架的 super-step 上限，防止图失控；max_rounds 是应用层业务预算，应该先判断并返回结构化 stop_reason。两者职责不同，不能互相替代。">
+      <p class="quiz-prompt">recursion_limit 与 max_rounds 的正确分工是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>两者完全等价，配置其中一个即可</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>前者防失控，后者表达业务预算</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>前者只适用于异步节点的执行</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>后者由 LangGraph 自动维护和更新</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-score" aria-live="polite"></div>
+  </div>
+
+  <h2 id="lab"><span class="num">08</span>Lab：用 StateGraph 重建 mini-agent<a class="anchor" href="#lab">¶</a></h2>
+
+  <p>
+    代码在 <a href="../labs/0008-langgraph-basics/">labs/0008-langgraph-basics/</a>。
+    它把第 3 课的 sandbox 工具换成了 RepoMedic 的 health / runbook 工具，
+    用脚本化模型离线跑完整条图，13 个测试不需要 API key。
+  </p>
+
+  <div class="callout warn">
+    <span class="label">先解决 Python 版本</span>
+    <p>
+      当前 LangGraph 1.2.x 要求 <strong>Python ≥ 3.10</strong>（PyPI 上 1.2.19 的
+      <code>requires_python &gt;= 3.10</code>）。你的旧 lab 是 3.9 兼容的，但这一课不行。
+      先跑 <code>python3 --version</code>；低于 3.10 就用 <code>python3.12 -m venv .venv</code>
+      或 <code>uv venv --python 3.12 .venv</code>。不要为了迁就 3.9 去装旧版 LangGraph，
+      否则你会把框架版本差异混进学习变量里。
+      <a href="https://pypi.org/project/langgraph/">PyPI — langgraph</a>
+    </p>
+  </div>
+
+  <h3>Step 0 · 建环境（5 分钟）</h3>
+  <pre><code>cd labs/0008-langgraph-basics
+python3 --version
+
+# 若低于 3.10，二选一：
+python3.12 -m venv .venv
+# 或：uv venv --python 3.12 .venv
+
+. .venv/bin/activate
+pip install -r requirements.txt</code></pre>
+
+  <h3>Step 1 · 跑离线测试（5 分钟）</h3>
+  <pre><code>python3 -m unittest -v</code></pre>
+  <p>
+    13 个测试覆盖：消息协议、工具错误、预算终止、未执行调用的 SKIPPED 标记、
+    <code>recursion_limit</code>、默认覆盖 vs <code>operator.add</code>、
+    <code>add_messages</code> 的追加与按 id 更新。
+  </p>
+
+  <h3>Step 2 · 跑一遍图（10 分钟）</h3>
+  <pre><code>python3 graph_agent.py --demo</code></pre>
+  <p>
+    观察三件事：<code>model</code> 如何产生 tool_calls；<code>tools</code> 如何为每个调用追加
+    ToolMessage；<code>route_after_model</code> 如何在第三轮走到 <code>finalize</code>。
+    最后一行应该是 <code>rounds=3  stop_reason=done  tool_calls=2</code>。
+  </p>
+
+  <h3>Step 3 · 把图打印出来（5 分钟）</h3>
+  <pre><code>python3 graph_agent.py --mermaid</code></pre>
+  <p>
+    把输出贴到任意 Mermaid 渲染器里。你要能指着图说出四条路径：
+    <code>finalize</code>、<code>tools</code>、<code>budget_exceeded</code>，以及
+    <code>tools → model</code> 的回边。
+  </p>
+
+  <h3>Step 4 · 拿掉 reducer，看状态怎么坏（10 分钟）</h3>
+  <p>
+    把 <code>AgentState.messages</code> 的 <code>Annotated[..., add_messages]</code> 改成
+    <code>List[AnyMessage]</code>，再跑测试。你会看到
+    <code>test_messages_follow_the_tool_protocol</code> 失败：消息历史只剩最后一条。
+    恢复后，改成拿掉 <code>rounds</code> 的 <code>operator.add</code>，再跑一次。
+    记录：哪条断言先失败？失败信息是否直接指向 reducer？
+  </p>
+
+  <h3>Step 5 · 把预算调成 1（8 分钟）</h3>
+  <pre><code>python3 graph_agent.py --max-rounds 1</code></pre>
+  <p>
+    检查 <code>stop_reason</code>、未执行调用的 SKIPPED ToolMessage，以及最终 answer 的措辞。
+    再回答：如果这里不补 ToolMessage，下一轮真实模型会发生什么？
+  </p>
+
+  <h3>Step 6 · 和第 3 课对照（10 分钟）</h3>
+  <ol>
+    <li>第 3 课的 <code>for step in range(max_steps)</code> 对应图里的哪条通道与哪条边？</li>
+    <li>为什么 <code>model</code> 节点只返回 <code>{"messages": [response], "rounds": 1}</code>，而不是完整 state？</li>
+    <li>如果 <code>tools</code> 节点抛异常而不是返回 <code>ERROR:</code>，图的行为会怎样？你希望它怎样？</li>
+  </ol>
+
+  <h3>成功标准</h3>
+  <ul class="checklist" data-persist="lesson8-lab">
+    <li><label><input type="checkbox"><span>13 个测试全绿，<code>--demo</code> 能跑出 <code>rounds=3 / tool_calls=2</code></span></label></li>
+    <li><label><input type="checkbox"><span>能画出 model / tools / finalize / budget 四条路径</span></label></li>
+    <li><label><input type="checkbox"><span>能解释默认覆盖、<code>operator.add</code>、<code>add_messages</code> 的差异</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 <code>max_rounds</code> 与 <code>recursion_limit</code> 的分工</span></label></li>
+    <li><label><input type="checkbox"><span>能说出未执行的 tool_call 为什么也要有 ToolMessage</span></label></li>
+  </ul>
+
+  <h2 id="java"><span class="num">09</span>和 Java 后端对照<a class="anchor" href="#java">¶</a></h2>
+
+  <table>
+    <thead><tr><th>Agent 概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>State schema / channel</td><td>聚合根字段 / 带合并语义的状态对象</td></tr>
+      <tr><td>Reducer</td><td><code>merge(old, delta)</code> / event sourcing 的 apply</td></tr>
+      <tr><td>Node</td><td>Command handler / 状态机 transition</td></tr>
+      <tr><td>Conditional edge</td><td>Guard / 路由表 / <code>switch</code> 分发</td></tr>
+      <tr><td>START / END</td><td>初始状态 / 终止状态</td></tr>
+      <tr><td><code>compile()</code></td><td>启动时的图校验、依赖注入与路由注册</td></tr>
+      <tr><td><code>recursion_limit</code></td><td>熔断器最大尝试次数 / 请求超时</td></tr>
+      <tr><td>Checkpoint（第 9 课）</td><td>事务日志 + 状态快照 / 断点续跑</td></tr>
+      <tr><td><code>stream_mode</code>（第 9 课）</td><td>SSE / 事件总线 / 链路追踪</td></tr>
+      <tr><td>Interrupt（第 9 课）</td><td>人工审批 / 工作流暂停</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    最大的认知转变是：<strong>Agent 的可靠性来自显式状态与显式控制流，而不是框架本身。</strong>
+    图只是把这两样东西摆到桌面上，让你能指着它说“这里会停”“这里会回到模型”“这里的状态会被覆盖”。
+    如果画不出这张图，说明你还没有真正理解自己的 Agent。
+  </p>
+
+  <div class="source-card">
+    <div class="label">本课精读</div>
+    <h3>LangGraph — Graph API</h3>
+    <p>
+      读 State、Reducers、Nodes、Edges、Conditional edges、Recursion limit 几节（约 20 分钟）。
+      重点看三件事：节点返回的是增量；没有 reducer 的通道会覆盖；多个并行节点写同一通道时需要
+      reducer。读完回到 lab，对照 <code>graph_agent.py</code> 的 <code>AgentState</code>，
+      逐条说出每个字段的合并语义。
+    </p>
+    <p><a href="https://docs.langchain.com/oss/python/langgraph/graph-api">docs.langchain.com/oss/python/langgraph/graph-api</a></p>
+    <p class="small">
+      选读：<a href="https://docs.langchain.com/oss/python/langgraph/thinking-in-langgraph">Thinking in LangGraph</a> ·
+      <a href="https://reference.langchain.com/python/langgraph/graph/message/add_messages">add_messages</a> ·
+      <a href="https://docs.langchain.com/oss/python/langgraph/use-graph-api">Use the graph API</a> ·
+      <a href="https://www.anthropic.com/engineering/building-effective-agents">Building Effective Agents</a> ·
+      <a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a>
+    </p>
+  </div>
+
+  <p class="small center no-print">
+    打印版：<a href="../reference/langgraph-checklist.html">LangGraph 清单</a> ·
+    设计 state、reducer、路由与停止条件时逐项过一遍。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">卡住了？</span>
+    <p>
+      回到终端问你的老师：“lesson 0008 里为什么 <code>rounds</code> 必须用
+      <code>operator.add</code>，而 <code>answer</code> 不需要？” 或者把
+      <code>graph_agent.py --mermaid</code> 的输出与你的路由函数贴过来，我们一起看哪条边不对。
+    </p>
+  </div>
+
+  <p class="small center no-print" style="margin-top:2.2rem;">
+    下一课：给这张图加 checkpointer、interrupt 与流式输出——崩溃后从 checkpoint 恢复，
+    在高风险工具前暂停等待人工审批，并把每个节点的增量推给前端。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="0007-state-memory.html">← 第 7 课：状态与记忆</a>
+    <a href="../reference/course-roadmap.html">课程路线图</a>
+    <a href="../reference/glossary.html">术语表</a>
+    <span class="next disabled">第 9 课：Checkpoint / Interrupt（即将解锁）</span>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

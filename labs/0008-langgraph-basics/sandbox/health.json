@@ -1,0 +1,18 @@
+{
+  "order-service": {
+    "status": "degraded",
+    "error_rate": "0.8%",
+    "p95_latency_ms": 420,
+    "db_pool_max": 50,
+    "db_pool_in_use": 47,
+    "version": "v2.14.1"
+  },
+  "payment-service": {
+    "status": "healthy",
+    "error_rate": "0.0%",
+    "p95_latency_ms": 95,
+    "db_pool_max": 30,
+    "db_pool_in_use": 8,
+    "version": "v3.2.0"
+  }
+}

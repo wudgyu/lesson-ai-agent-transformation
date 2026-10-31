@@ -155,6 +155,11 @@
       <tbody>
         <tr id="term-state-graph"><td>状态图<span class="en">StateGraph</span></td><td>LangGraph 的核心抽象：节点是计算步骤，边是控制流，状态在各节点间传递并按 reducer 合并。</td><td>W2 D9</td></tr>
         <tr id="term-reducer"><td>Reducer</td><td>定义“新值如何合并进旧状态”的函数。例如消息列表用 append，计数器用求和。写错 reducer 是状态丢失的常见原因。</td><td>W2 D9</td></tr>
+        <tr id="term-channel"><td>通道<span class="en">channel</span></td><td>LangGraph state schema 里的一个字段。每个通道有自己的合并语义：默认覆盖，或由 reducer 决定 append / 求和 / 按 key 合并。</td><td>W2 D9</td></tr>
+        <tr id="term-super-step"><td>超级步<span class="en">super-step</span></td><td>图的一次调度轮次：当前可执行的节点一起运行，它们的增量按 reducer 合并，然后决定下一轮节点。checkpoint 与 recursion_limit 都以它为粒度。</td><td>W2 D9</td></tr>
+        <tr id="term-conditional-edge"><td>条件边<span class="en">conditional edge</span></td><td>由路由函数根据当前 state 选择下一个节点的边。路由函数返回节点名或 END；映射表可把业务返回值翻译成节点名。</td><td>W2 D9</td></tr>
+        <tr id="term-recursion-limit"><td>递归上限<span class="en">recursion_limit</span></td><td>LangGraph 对一次运行中 super-step 数的硬上限，超过时抛 GraphRecursionError。它是防失控的框架层兜底，不是业务预算。</td><td>W2 D9</td></tr>
+        <tr id="term-command"><td>Command</td><td>LangGraph 中把状态更新与下一步路由合并到节点返回值的写法：<code>Command(update=..., goto=...)</code>。适合把控制流内聚在节点里。</td><td>W2 D9</td></tr>
         <tr id="term-checkpoint"><td>检查点<span class="en">checkpoint</span></td><td>把 Agent 每一步的状态持久化。支持断点恢复、时间旅行调试、多会话隔离。</td><td>W2 L7</td></tr>
         <tr id="term-durable-execution"><td>持久化执行<span class="en">durable execution</span></td><td>进程崩溃或人工暂停后，任务能从上次检查点继续，且不重复执行有副作用的操作。</td><td>W2 D13</td></tr>
         <tr id="term-idempotency"><td>幂等<span class="en">idempotency</span></td><td>同一操作重复执行，效果与执行一次相同。Agent 重试、断点恢复、模型重复调用时，写工具必须幂等。</td><td>W1 L4 · W2 L7</td></tr>

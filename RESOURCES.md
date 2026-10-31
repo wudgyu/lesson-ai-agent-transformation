@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-10-29。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-10-31。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -133,6 +133,16 @@
   核心原语：Agent、Handoff、Guardrail、Session、Tracing。第 2 周对照学习。
 - [LangGraph v1 文档](https://docs.langchain.com/oss/python/langgraph/overview)
   状态图、reducer、checkpoint、interrupt、durable execution。**第 2 周主框架**。
+- [LangGraph — Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api)
+  **第 8 课精读**。State schema、reducer、node、edge、conditional edge、recursion limit；`add_messages` 与 `InvalidUpdateError` 的官方说明。
+- [LangGraph — Thinking in LangGraph](https://docs.langchain.com/oss/python/langgraph/thinking-in-langgraph)
+  第 8 课选读。状态只存原始数据、节点保持单一职责、把错误处理放进流程；是设计图之前的检查清单。
+- [LangGraph — Use the graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api)
+  `Command`、`Send`、并行分支、`recursion_limit`、`RemainingSteps`、`RetryPolicy` 与错误处理。第 8–9 课查手册。
+- [LangGraph — add_messages reference](https://reference.langchain.com/python/langgraph/graph/message/add_messages)
+  `add_messages` 的精确语义：新 id 追加、同 id 更新、字典反序列化。第 8 课 lab 的 messages 通道依据。
+- [PyPI — langgraph](https://pypi.org/project/langgraph/)
+  版本、`requires_python` 与依赖。2026-10 核验：1.2.19 要求 Python >= 3.10；第 8 课 lab 因此需要 3.10+ 环境。
 - [Model Context Protocol — 2026-07-28 规范](https://modelcontextprotocol.io/specification/2026-07-28/changelog)
   最新 MCP：无状态核心、`server/discover`、extensions、OAuth 加固。第 2 周精读 changelog。
 - [MCP — Getting Started](https://modelcontextprotocol.io/docs/getting-started/intro)
