@@ -616,6 +616,29 @@ python3 eval.py --index index/structure.json --retriever bm25 --k 10</code></pre
     整体 recall 反超（0.825），成本仍低于 naive。回答：如果上下文预算固定，你会选哪个？为什么？
   </p>
 
+  <details class="recall">
+    <summary>参考答案（先自己想，再展开）</summary>
+    <p><strong>选 structure，并把 k 提到约 10；不选 naive-600。</strong></p>
+    <table>
+      <thead><tr><th>配置</th><th>Recall@k</th><th>ctx_chars</th><th>prec</th></tr></thead>
+      <tbody>
+        <tr><td>structure · k=5</td><td>0.625</td><td>1033</td><td>0.250</td></tr>
+        <tr><td>naive-600 · k=5</td><td>0.800</td><td>2209</td><td>0.250</td></tr>
+        <tr><td>structure · k=10</td><td>0.825</td><td>1895</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <p>
+      naive 的 recall 是用约 2.1 倍上下文换来的（2209 vs 1033）。在约 2200 字符的预算下，
+      structure 可以用 k=10，只花 1895 字符，recall 反而更高（0.825 &gt; 0.800）。
+    </p>
+    <p>
+      naive 的“高召回”主要不是排序更准，而是 chunk 更大：平均 456 字符，structure 只有 218 字符。
+      块越大，证据短语越容易落进块里——这是块级命中的统计效应。两边的 <code>prec</code> 都是 0.250，
+      说明多出来的上下文没有变成更多有效证据。
+    </p>
+    <p>公平比较要在相近预算下做：比“同等 <code>ctx_chars</code> 的 recall”，而不是“同等 k 的 recall”。</p>
+  </details>
+
   <h3>Step 4 · 定位一个“跨 chunk”失败（8 分钟）</h3>
   <pre><code>python3 eval.py --index index/structure.json --retriever bm25 --k 5 --case Q14
 python3 eval.py --index index/structure.json --retriever bm25 --k 10 --case Q14
@@ -625,6 +648,31 @@ python3 eval.py --index index/structure.json --retriever hybrid --k 7 --case Q14
     BM25 要 k=10 才把根因捞回来；hybrid 在 k=7 就够，因为 RRF 把单路排名靠后的根因块拉了进来。
     然后回答：这是 chunk 边界、tokenizer、检索器，还是标签的问题？
   </p>
+
+  <details class="recall">
+    <summary>参考答案（先自己想，再展开）</summary>
+    <p><strong>主因是 chunk 边界（证据跨 section），不是 tokenizer。</strong></p>
+    <p>
+      Q14 有两个信息需求：指标 <code>p99 2400ms</code>、<code>48/50</code> 在
+      <code>#摘要</code> / <code>#证据</code>；根因 <code>N+1</code> 在 <code>#根因</code>。
+      structure chunker 按 <code>##</code> 切分，两者落在不同 chunk。k=5 时 BM25 的 top-5 是
+      <code>#证据</code>、<code>#摘要</code>、<code>#时间线</code> 和 payment 事故的两块，
+      <code>#根因</code> 不在。query 里的精确指标把指标块顶到前面；而“N+1”这个词根本没出现在
+      query 里，根因块没有词面信号。
+    </p>
+    <p>
+      tokenizer 不是问题：<code>p99</code>、<code>2400ms</code>、<code>48/50</code>、<code>连接池</code>
+      都被正确切分并命中。检索器也不是“坏了”：BM25 本来就按词面排序；问题是检索单元把一条完整证据链切开了。
+    </p>
+    <p>
+      <strong>但还要注意标签。</strong>当前标签是 <code>contains: "N+1"</code>，而
+      <code>#后续</code> 里也写了“防止 N+1 回归”。BM25 k=10 报告的第 10 名是
+      <code>#后续</code>，hybrid k=7 的第 7 名也是 <code>#后续</code>，都不是
+      <code>#根因</code>。所以按指标算“召回成功”，实际召回的是提到 N+1 的后续段，不是解释根因的段。
+      更严谨的标签应该用根因句，例如“把批量查询改成了循环查询”（该句只出现在
+      <code>#根因</code>）。这是 <code>--validate</code> 查不出来的标签质量问题。
+    </p>
+  </details>
 
   <h3>Step 5 · 可选：接真实 embedding（10 分钟）</h3>
   <pre><code>cp .env.example .env
@@ -639,9 +687,108 @@ python3 eval.py --index index/structure-embedded.json --retriever all</code></pr
 
   <h3>Step 6 · 回答三个问题</h3>
   <ol>
-    <li>为什么 keyword 切片接近满分，而 semantic 切片明显更低？这是 tokenizer、embedding 还是语料的问题？</li>
-    <li>naive-600 的 recall 更高，为什么它不一定更好？请用 <code>ctx_chars</code> 和 <code>prec</code> 解释。</li>
-    <li>如果 Q14 这类“指标 + 根因”查询占你线上流量的一半，你会改 chunk、改 k，还是加 rerank？为什么？</li>
+    <li>
+      为什么 keyword 切片接近满分，而 semantic 切片明显更低？这是 tokenizer、embedding 还是语料的问题？
+      <details class="recall">
+        <summary>参考答案（先自己想，再展开）</summary>
+        <p><strong>主因是检索表示（embedding），不是 tokenizer，也不是语料。</strong></p>
+        <ul>
+          <li>
+            <strong>keyword 切片三种检索器都是 1.000。</strong>因为这些 query 围绕精确、罕见的标识符：
+            <code>TS-999</code>、<code>findRecentOrders</code>、<code>maximum-pool-size</code>、
+            <code>HikariPool-1</code>、<code>a1b2c3d</code>。BM25 的 IDF 会奖励稀有词；tokenizer
+            既保留整串，又拆 camelCase / 分隔符，所以精确匹配很稳。语料里这些词也确实存在。
+          </li>
+          <li>
+            <strong>semantic 切片：BM25 0.286，vector(lexical) 0.286，hybrid 0.429。</strong>
+            失败的是“换一种说法”的 query：
+            <ul>
+              <li>Q10“线上故障第一步” vs “先止血”——几乎没有共同实词，BM25 只有 2 个 chunk 得分；</li>
+              <li>Q12“把数据库打挂” vs “观察窗口”；</li>
+              <li>Q07“连接被占满 / 先看哪些指标” vs “连接池耗尽 / 查看 <code>db_pool.used</code>”——
+                BM25 把“指标”匹配到了 <code>#注意</code>，而不是 <code>#诊断</code>；</li>
+              <li>Q08“变慢 + 请求失败” vs “p99 延迟上升 + 5xx 比例上升”。</li>
+            </ul>
+          </li>
+          <li>
+            <code>vector(lexical)</code> 是 hashed TF 的<strong>词面向量</strong>，不是语义 embedding，
+            所以它和 BM25 一样只认词面。这正好证明问题不在“BM25 vs 向量”，而在“整条离线管线只有词面匹配”。
+            接上真实 dense embedding 后 semantic 切片才有意义；不要用 lexical 的结果断言“向量检索没用”。
+          </li>
+        </ul>
+        <p>
+          <strong>一个例外：Q09 更像是标签问题，不是表示问题。</strong>它的 top-5 里有
+          <code>deploy-rollback.md#验证</code>，而“怎么确认可以安全回滚”本来就该看验证段；
+          标签却要求 <code>kubectl rollout undo</code>（在 <code>#回滚</code> 命令段）。
+          这说明按类型切片后还要逐条看失败，不能只盯平均分。
+        </p>
+        <p>一句话：keyword 好是因为“词对得上”；semantic 差是因为“词对不上，而离线检索器不会意会”。</p>
+      </details>
+    </li>
+    <li>
+      naive-600 的 recall 更高，为什么它不一定更好？请用 <code>ctx_chars</code> 和 <code>prec</code> 解释。
+      <details class="recall">
+        <summary>参考答案（先自己想，再展开）</summary>
+        <p><strong>naive 的高 recall 是“块更大”买来的，不是“检索更准”。</strong></p>
+        <ul>
+          <li>naive-600 k=5：recall 0.800，<code>ctx_chars</code> 2209，prec 0.250；</li>
+          <li>structure k=5：recall 0.625，<code>ctx_chars</code> 1033，prec 0.250；</li>
+          <li>structure k=10：recall 0.825，<code>ctx_chars</code> 1895。</li>
+        </ul>
+        <ol>
+          <li>
+            naive 平均 chunk 456 字符，structure 218 字符。块越大，证据短语越容易落在块内，recall
+            自然上涨；但这是块级命中的统计效应，不是排序变好。
+          </li>
+          <li>
+            <code>prec</code> 没变（都是 0.250）：多出来的 1176 个字符没有带来更多有效证据，
+            只是把同样的证据埋进更长的块里。
+          </li>
+          <li>
+            这些字符都要进模型上下文，付 token、延迟和注意力稀释的代价。在 lost-in-the-middle 下，
+            块越大不代表模型越容易看到关键句。
+          </li>
+        </ol>
+        <p>
+          公平比较要在相近预算下做：structure k=10 花 1895 字符就到 0.825，低于 naive 的 2209，
+          已经反超。所以预算固定时选 structure + 调 k；如果既要小检索单元又要完整上下文，
+          用 parent-child / small-to-big，而不是把块整体放大。
+        </p>
+      </details>
+    </li>
+    <li>
+      如果 Q14 这类“指标 + 根因”查询占你线上流量的一半，你会改 chunk、改 k，还是加 rerank？为什么？
+      <details class="recall">
+        <summary>参考答案（先自己想，再展开）</summary>
+        <p><strong>首选改 chunk（parent-child / 相邻段扩展）；k 只做止血；rerank 是精度工具，不是召回工具。</strong></p>
+        <ul>
+          <li>
+            <strong>改 k：</strong>Q14 从 k=5 到 k=10，<code>ctx_chars</code> 从 1134 涨到 2263，
+            约 2 倍；precision 只有 0.1（10 块里 1 块命中；k=5 时是 0）。它能救这一条，
+            但如果这类查询占一半流量，等于给所有查询永久加税，而且噪音更多。适合当天止血，不适合作为结构方案。
+          </li>
+          <li>
+            <strong>加 rerank：</strong>rerank 只能重排候选集，不能创造没被召回的 chunk。正确用法是
+            “宽召回 <code>candidate_k=50</code> → rerank → top-5”：如果根因块在候选池里但排名靠后，
+            rerank 能把它提上来，同时把送给生成模型的上下文控制在 5 块。它解决“排得不对 / 噪音多”，
+            不解决“证据被 chunk 切开”。候选池里根本没有时，rerank 无能为力。
+          </li>
+          <li>
+            <strong>改 chunk：</strong>这是唯一直接解决“证据跨 chunk”的方案。推荐 small-to-big：
+            检索仍用小 chunk（保证精度），命中后按 <code>doc_id + start_line/end_line</code>
+            取同文档的父段或相邻段（例如把 <code>#摘要</code> / <code>#证据</code> 和
+            <code>#根因</code> 一起给模型）。一次性重建索引，只有命中文档多花上下文，不会给全量流量加税。
+            不要简单把 <code>#摘要</code> 和 <code>#根因</code> 合并成一个大 chunk——那会稀释 embedding，
+            也会拖累其他查询。
+          </li>
+        </ul>
+        <p>
+          所以：如果只能改一处，改 chunk；如果只能做在线改动，先用 <code>candidate_k=50</code> + rerank
+          止血；k 不要作为长期方案。上线后用 <code>mixed</code> / 跨段切片固定预算对比 Recall@5、Full@5
+          和 <code>ctx_chars</code>，确认没有用上下文换指标。
+        </p>
+      </details>
+    </li>
   </ol>
 
   <h3>成功标准</h3>
