@@ -1,7 +1,7 @@
 """Offline tests for lesson 0009. No API key required.
 
 Run:
-    python3 -m unittest -v
+    python3 -m unittest test_durability -v
 """
 from __future__ import annotations
 

@@ -47,7 +47,7 @@
   <div class="meta">
     <span>首次建立 2026-11-04</span>
     <span>配套 Lesson 0009</span>
-    <span>Checkpoint · Interrupt · Streaming</span>
+    <span>Checkpoint · Interrupt · Streaming · Postgres</span>
     <span>可打印</span>
   </div>
 
@@ -197,7 +197,59 @@ snapshot.tasks[0].interrupts[0]     # Interrupt(value=..., id=...)</code></pre>
     需要区分“没接收”和“接收了但丢了”，就在 checkpointer 外先写 outbox / admission 记录。
   </p>
 
-  <h2 id="failures"><span class="num">07</span>常见失败与定位</h2>
+  <h2 id="postgres"><span class="num">07</span>Postgres 选修检查</h2>
+
+  <p>
+    SQLite 证明跨进程；Postgres 证明跨实例。多副本服务必须共享同一个 checkpoint 库，
+    图本身不需要改，只换 saver。
+  </p>
+
+  <pre><code>import os
+from langgraph.checkpoint.postgres import PostgresSaver
+
+with PostgresSaver.from_conn_string(os.environ["DATABASE_URL"]) as saver:
+    saver.setup()          # migration; idempotent
+    graph = builder.compile(checkpointer=saver)</code></pre>
+
+  <p>多线程服务用连接池，不要在请求路径里建表：</p>
+
+  <pre><code>from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+from langgraph.checkpoint.postgres import PostgresSaver
+
+pool = ConnectionPool(
+    conninfo=os.environ["DATABASE_URL"],
+    min_size=1,
+    max_size=10,
+    kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+)
+saver = PostgresSaver(pool)
+saver.setup()              # once at startup</code></pre>
+
+  <table>
+    <thead><tr><th>检查项</th><th>原因 / 做法</th></tr></thead>
+    <tbody>
+      <tr><td><code>setup()</code> 只跑一次</td><td>DDL migration；多实例并发建表会抢锁</td></tr>
+      <tr><td>连接池而非每请求连接</td><td>避免耗尽 Postgres 的 <code>max_connections</code></td></tr>
+      <tr><td><code>autocommit=True</code></td><td><code>CREATE INDEX CONCURRENTLY</code> 需要；官方连接串默认也是</td></tr>
+      <tr><td><code>prepare_threshold=0</code></td><td>与 PgBouncer / 事务池化兼容</td></tr>
+      <tr><td><code>row_factory=dict_row</code></td><td>saver 读取行时期望字典</td></tr>
+      <tr><td><code>thread_id</code> &lt; 255</td><td>官方长度约束；用 UUID / 业务流水号</td></tr>
+      <tr><td>一条事故一个 thread</td><td>不同事故共享时间线会读到彼此状态</td></tr>
+      <tr><td>删除前导出审计</td><td><code>delete_thread</code> 删 checkpoints / blobs / writes</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <span class="label">查看底层表</span>
+    <p>
+      <code>setup()</code> 后会出现 <code>checkpoints</code>、<code>checkpoint_blobs</code>、
+      <code>checkpoint_writes</code>、<code>checkpoint_migrations</code> 四张表。
+      <code>select thread_id, count(*) from checkpoints group by 1</code> 能看到每条时间线的 checkpoint 数。
+    </p>
+  </div>
+
+  <h2 id="failures"><span class="num">08</span>常见失败与定位</h2>
 
   <table>
     <thead><tr><th>现象</th><th>最可能的原因</th><th>处理</th></tr></thead>
@@ -213,7 +265,7 @@ snapshot.tasks[0].interrupts[0]     # Interrupt(value=..., id=...)</code></pre>
     </tbody>
   </table>
 
-  <h2 id="tests"><span class="num">08</span>离线测试配方</h2>
+  <h2 id="tests"><span class="num">09</span>离线测试配方</h2>
 
   <ul class="checklist">
     <li><label><input type="checkbox"><span><strong>暂停</strong>：首次 invoke 后 <code>state.next == ("approval",)</code>，且 <code>tasks[0].interrupts</code> 非空。</span></label></li>
@@ -224,9 +276,10 @@ snapshot.tasks[0].interrupts[0]     # Interrupt(value=..., id=...)</code></pre>
     <li><label><input type="checkbox"><span><strong>幂等对比</strong>：关闭幂等后同一 key 产生两条记录，开启后只有一条。</span></label></li>
     <li><label><input type="checkbox"><span><strong>流式顺序</strong>：updates 的节点顺序符合图；resume 后中断节点重新出现。</span></label></li>
     <li><label><input type="checkbox"><span><strong>历史</strong>：<code>get_state_history</code> 能找到带 interrupt 的 checkpoint。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>Postgres（选修）</strong>：跨连接 resume、thread 隔离、崩溃恢复、<code>delete_thread</code>；设置 <code>TEST_POSTGRES_URL</code> 才运行。</span></label></li>
   </ul>
 
-  <h2 id="java"><span class="num">09</span>Java 后端对照</h2>
+  <h2 id="java"><span class="num">10</span>Java 后端对照</h2>
 
   <table>
     <thead><tr><th>Agent 概念</th><th>Java 后端对应</th></tr></thead>
@@ -250,6 +303,7 @@ snapshot.tasks[0].interrupts[0]     # Interrupt(value=..., id=...)</code></pre>
       <a href="https://docs.langchain.com/oss/python/langgraph/streaming">Streaming</a> ·
       <a href="https://docs.langchain.com/oss/python/langgraph/use-time-travel">Time travel</a> ·
       <a href="https://docs.langchain.com/oss/python/langgraph/persistence">Persistence</a> ·
+      <a href="https://reference.langchain.com/python/langgraph/checkpoints/#langgraph.checkpoint.postgres.PostgresSaver">PostgresSaver API</a> ·
       HumanLayer — <a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a>
     </p>
   </div>

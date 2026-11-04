@@ -151,6 +151,12 @@
   第 9 课选读。get_state_history、update_state 分叉、replay 与 fork 的重执行边界。
 - [langgraph-checkpoint-sqlite (PyPI)](https://pypi.org/project/langgraph-checkpoint-sqlite/)
   第 9 课 lab 的本地持久化依赖；SQLite 适合开发，生产用 PostgresSaver。
+- [langgraph-checkpoint-postgres (PyPI)](https://pypi.org/project/langgraph-checkpoint-postgres/)
+  第 9 课选修。`PostgresSaver` / `AsyncPostgresSaver`、`setup()` 建表、`delete_thread`；依赖 `psycopg` 与 `psycopg-pool`。
+- [PostgresSaver API reference](https://reference.langchain.com/python/langgraph/checkpoints/#langgraph.checkpoint.postgres.PostgresSaver)
+  构造参数（`Connection` / `ConnectionPool`）、`from_conn_string`、`setup`、`list`、`delete_thread` 的精确签名。
+- [psycopg 3 — Connection pools](https://www.psycopg.org/psycopg3/docs/advanced/pool.html)
+  多线程服务的连接池配置；`autocommit=True`、`prepare_threshold=0`、`row_factory=dict_row` 的来源。
 - [LangGraph — add_messages reference](https://reference.langchain.com/python/langgraph/graph/message/add_messages)
   `add_messages` 的精确语义：新 id 追加、同 id 更新、字典反序列化。第 8 课 lab 的 messages 通道依据。
 - [PyPI — langgraph](https://pypi.org/project/langgraph/)

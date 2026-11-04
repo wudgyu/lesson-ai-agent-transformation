@@ -16,8 +16,8 @@
   <p class="subtitle">checkpoint 把状态变成日志，interrupt 把暂停变成协议，stream 把过程变成事件。</p>
   <div class="meta">
     <span>Lesson 0009</span>
-    <span>约 110 分钟</span>
-    <span>阅读 38′ · 测验 6′ · Lab 60′</span>
+    <span>约 110 分钟 · 选修 +20′</span>
+    <span>阅读 38′ · 测验 6′ · Lab 60′ · 选修 20′</span>
     <span>无需 API key · Python ≥ 3.10</span>
   </div>
 
@@ -64,6 +64,7 @@
       <li><a href="#interrupt">interrupt：暂停是一个状态</a></li>
       <li><a href="#stream">流式：把过程变成事件</a></li>
       <li><a href="#durability">durability 与生产检查清单</a></li>
+      <li><a href="#postgres">选修：PostgresSaver</a></li>
       <li><a href="#quiz">检验一下</a></li>
       <li><a href="#lab">Lab：给 RepoMedic 加审批与断点恢复</a></li>
       <li><a href="#java">和 Java 后端对照</a></li>
@@ -436,6 +437,59 @@ for part in graph.stream(
     </tbody>
   </table>
 
+  <h3 id="postgres">选修：把 SQLite 换成 Postgres</h3>
+
+  <p>
+    SQLite 证明了“状态能跨进程”，Postgres 证明“状态能跨实例”。生产环境通常有多个 API 副本，
+    它们必须看到同一条 thread；<code>PostgresSaver</code> 把 checkpoint 放进共享数据库，
+    也正是 LangSmith 使用的后端。图本身一行不用改，只换 checkpointer。
+    <a href="https://docs.langchain.com/oss/python/langgraph/checkpointers#checkpointer-libraries">Checkpointer libraries</a>
+  </p>
+
+  <pre><code>import os
+from langgraph.checkpoint.postgres import PostgresSaver
+
+with PostgresSaver.from_conn_string(os.environ["DATABASE_URL"]) as saver:
+    saver.setup()          # 建表；幂等，生产里作为一次 migration
+    graph = builder.compile(checkpointer=saver)
+    graph.invoke(initial_state(), config, durability="sync")</code></pre>
+
+  <p>
+    <code>from_conn_string</code> 适合脚本和单连接进程。多线程服务应该用连接池，
+    并在启动时只跑一次 <code>setup()</code>，而不是每个请求都建表：
+  </p>
+
+  <pre><code>import os
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+from langgraph.checkpoint.postgres import PostgresSaver
+
+pool = ConnectionPool(
+    conninfo=os.environ["DATABASE_URL"],
+    min_size=1,
+    max_size=10,
+    kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+)
+saver = PostgresSaver(pool)
+saver.setup()              # 只在这里执行一次</code></pre>
+
+  <table>
+    <thead><tr><th>Postgres 特有检查</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td><code>setup()</code> 只跑一次</td><td>它是 DDL migration；多实例并发建表会互相抢锁</td></tr>
+      <tr><td>用 <code>ConnectionPool</code> 共享连接</td><td>每个请求新建连接会耗尽 Postgres 的 max_connections</td></tr>
+      <tr><td><code>thread_id</code> &lt; 255 字符</td><td>官方对 Postgres checkpointer 的长度约束</td></tr>
+      <tr><td>一条事故一个 thread</td><td>不同事故共享时间线后，get_state 会读到彼此的状态</td></tr>
+      <tr><td>删除前先导出审计</td><td><code>delete_thread</code> 会同时删 checkpoints / blobs / writes</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small">
+    Lab 的选修步骤会把同一套 <code>start → resume → crash → continue</code> 在 Postgres 上再跑一遍，
+    并用 5 个可选测试验证跨连接恢复、thread 隔离与删除语义。见
+    <a href="../labs/0009-langgraph-durability/">Lab README 的 Step 6</a>。
+  </p>
+
   <h3>生产检查清单</h3>
   <ul class="checklist" data-persist="lesson9-production">
     <li><label><input type="checkbox"><span>关键路径显式写 <code>durability="sync"</code>，不依赖默认值。</span></label></li>
@@ -541,7 +595,7 @@ python3.12 -m venv .venv
 pip install -r requirements.txt</code></pre>
 
   <h3>Step 1 · 跑离线测试（5 分钟）</h3>
-  <pre><code>python3 -m unittest -v</code></pre>
+  <pre><code>python3 -m unittest test_durability -v</code></pre>
   <p>
     9 个测试覆盖：首次运行在 approval 暂停、批准后只执行一次、拒绝不执行、
     缺少 approver / approval_id 判为无效、新 thread 不继承旧状态、
@@ -596,6 +650,33 @@ python3 graph_agent.py continue --thread crash-1</code></pre>
     的最新状态，并走到了 <code>rejected</code>。
   </p>
 
+  <h3>Step 6 · 选修：PostgresSaver（20–30 分钟）</h3>
+  <p>
+    SQLite 版证明“状态能跨进程”；Postgres 版证明“状态能跨实例”。用 Docker 起一个本地库，
+    同一张图只换 checkpointer，就能让多个 API 副本共享同一条 thread。
+  </p>
+  <pre><code># 已有 Postgres 16.1 在 5432 上运行时，可跳过 compose，直接设 DATABASE_URL
+docker compose up -d --wait
+pip install -r requirements-postgres.txt
+export DATABASE_URL=postgresql://repomedic:repomedic@localhost:5432/repomedic
+
+python3 postgres_demo.py init
+python3 postgres_demo.py start --thread pg-incident-1
+
+# 换一个终端（模拟另一个实例）
+python3 postgres_demo.py resume --thread pg-incident-1 \
+  --decision approve --approver alice --approval-id APR-PG-7
+python3 postgres_demo.py stats --thread pg-incident-1
+
+# 5 个可选测试；不设置 TEST_POSTGRES_URL 时会自动 skip
+TEST_POSTGRES_URL="$DATABASE_URL" python3 -m unittest test_postgres_optional -v</code></pre>
+  <p>
+    预期：5 个测试全绿；<code>stats</code> 显示 checkpoint 数量；崩溃恢复流程与 SQLite 版一致
+    （<code>diagnose_runs=1</code>、<code>effects[0].status="noop"</code>）。Lab 的 compose 固定
+    <code>postgres:16.1</code> 以复用本地镜像；没有 Docker 也可以接任意 Postgres 14+，
+    只要改 <code>DATABASE_URL</code>。
+  </p>
+
   <h3>成功标准</h3>
   <ul class="checklist" data-persist="lesson9-lab">
     <li><label><input type="checkbox"><span>9 个测试全绿，<code>start → resume</code> 跨进程能完成审批</span></label></li>
@@ -603,6 +684,7 @@ python3 graph_agent.py continue --thread crash-1</code></pre>
     <li><label><input type="checkbox"><span>能说清 checkpoint 与外部副作用为什么需要幂等键</span></label></li>
     <li><label><input type="checkbox"><span>能区分 <code>custom</code> 与 <code>updates</code>，并解释 resume 后事件为什么重复</span></label></li>
     <li><label><input type="checkbox"><span>能说出 <code>sync</code> / <code>async</code> / <code>exit</code> 的崩溃窗口差异</span></label></li>
+    <li><label><input type="checkbox"><span>（选修）5 个 Postgres 测试全绿，并能说出 <code>setup()</code> 与连接池的分工</span></label></li>
   </ul>
 
   <h2 id="java"><span class="num">08</span>和 Java 后端对照<a class="anchor" href="#java">¶</a></h2>
@@ -646,6 +728,7 @@ python3 graph_agent.py continue --thread crash-1</code></pre>
       选读：<a href="https://docs.langchain.com/oss/python/langgraph/streaming">Streaming</a> ·
       <a href="https://docs.langchain.com/oss/python/langgraph/use-time-travel">Time travel</a> ·
       <a href="https://docs.langchain.com/oss/python/langgraph/persistence">Persistence</a> ·
+      <a href="https://reference.langchain.com/python/langgraph/checkpoints/#langgraph.checkpoint.postgres.PostgresSaver">PostgresSaver API</a> ·
       <a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a>
     </p>
   </div>
