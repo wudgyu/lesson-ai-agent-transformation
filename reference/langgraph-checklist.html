@@ -46,8 +46,8 @@
   <p class="subtitle">State 是通道，reducer 是合并语义，边是控制流。</p>
   <div class="meta">
     <span>首次建立 2026-10-31</span>
-    <span>配套 Lesson 0008</span>
-    <span>StateGraph · Reducer · Conditional Edge</span>
+    <span>配套 Lesson 0008–0009</span>
+    <span>StateGraph · Reducer · Checkpoint</span>
     <span>可打印</span>
   </div>
 
@@ -92,7 +92,7 @@
       <ul>
         <li>state 只含可序列化的值（不塞 client、文件句柄）</li>
         <li>副作用记录与幂等键进 state（第 7 课）</li>
-        <li>checkpoint 在节点边界发生，节点粒度影响重跑成本</li>
+        <li>checkpoint 在 super-step 边界发生，节点粒度影响重跑成本</li>
         <li>长任务把 state 版本化，避免 schema 漂移</li>
       </ul>
     </div>
@@ -128,7 +128,7 @@
     <li><label><input type="checkbox"><span><strong>路由</strong>：每个条件边的路由函数都覆盖所有分支；返回值必须在映射表里。</span></label></li>
     <li><label><input type="checkbox"><span><strong>回边</strong>：循环有明确的应用层退出条件，不只依赖 recursion_limit。</span></label></li>
     <li><label><input type="checkbox"><span><strong>唯一路由</strong>：同一源节点不要同时混用固定边与条件边；选一种。</span></label></li>
-    <li><label><input type="checkbox"><span><strong>节点粒度</strong>：调用不同外部服务的步骤拆开；checkpoint 在节点边界，粒度影响恢复成本。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>节点粒度</strong>：调用不同外部服务的步骤拆开；checkpoint 在 super-step 边界，粒度影响恢复成本。</span></label></li>
     <li><label><input type="checkbox"><span><strong>编译</strong>：<code>compile()</code> 后再 <code>invoke()</code>；编译期会校验 schema 与连接。</span></label></li>
     <li><label><input type="checkbox"><span><strong>可视化</strong>：<code>graph.get_graph().draw_mermaid()</code> 能画出预期结构。</span></label></li>
   </ul>
@@ -255,8 +255,8 @@ graph = builder.compile()</code></pre>
 
   <nav class="footer-nav">
     <a href="../lessons/0008-langgraph-basics.html">← 第 8 课：LangGraph I</a>
-    <a href="course-roadmap.html">课程路线图</a>
-    <a class="next" href="glossary.html">术语表 →</a>
+    <a href="langgraph-durability-checklist.html">持久化与审批清单</a>
+    <a class="next" href="../lessons/0009-langgraph-durability.html">第 9 课：可恢复的 Agent →</a>
   </nav>
 
 </main>

@@ -1,0 +1,2 @@
+langgraph>=1.2,<2
+langgraph-checkpoint-sqlite>=2,<4

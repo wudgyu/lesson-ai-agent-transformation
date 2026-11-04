@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-10-31。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-11-04。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -139,6 +139,18 @@
   第 8 课选读。状态只存原始数据、节点保持单一职责、把错误处理放进流程；是设计图之前的检查清单。
 - [LangGraph — Use the graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api)
   `Command`、`Send`、并行分支、`recursion_limit`、`RemainingSteps`、`RetryPolicy` 与错误处理。第 8–9 课查手册。
+- [LangGraph — Checkpointers](https://docs.langchain.com/oss/python/langgraph/checkpointers)
+  **第 9 课精读**。super-step 与 checkpoint、pending writes、thread、get_state / get_state_history / update_state、durability 三模式（sync / async / exit）、序列化与保留策略。第 9 课 lab 的语义依据。
+- [LangGraph — Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)
+  **第 9 课精读**。interrupt() 与 Command(resume=...) 的暂停/恢复协议、节点从头重跑、循环内多次 interrupt 的陷阱、并行 interrupt 按 id 配对、response_schema 校验。
+- [LangGraph — Persistence](https://docs.langchain.com/oss/python/langgraph/persistence)
+  checkpointer（thread 作用域）与 store（跨 thread）的分工；InMemorySaver / SqliteSaver / PostgresSaver；子图 checkpoint namespace。
+- [LangGraph — Streaming](https://docs.langchain.com/oss/python/langgraph/streaming)
+  第 9 课选读。stream_mode 的 values / updates / messages / custom / debug / checkpoints；`version="v2"` 的统一 StreamPart；子图流式。
+- [LangGraph — Time travel](https://docs.langchain.com/oss/python/langgraph/use-time-travel)
+  第 9 课选读。get_state_history、update_state 分叉、replay 与 fork 的重执行边界。
+- [langgraph-checkpoint-sqlite (PyPI)](https://pypi.org/project/langgraph-checkpoint-sqlite/)
+  第 9 课 lab 的本地持久化依赖；SQLite 适合开发，生产用 PostgresSaver。
 - [LangGraph — add_messages reference](https://reference.langchain.com/python/langgraph/graph/message/add_messages)
   `add_messages` 的精确语义：新 id 追加、同 id 更新、字典反序列化。第 8 课 lab 的 messages 通道依据。
 - [PyPI — langgraph](https://pypi.org/project/langgraph/)

@@ -43,7 +43,8 @@
 - 2026-10-28：同步 OpenAI 文档迁移（guides → developers.openai.com，Text generation 拆分）；更新 Lesson 0001/0004、RESOURCES、LLM 调用清单链接，并在 Lesson 0001 增加 Chat Completions ↔ Responses 术语对照与兼容性说明。
 - 2026-10-29：Lesson 0002 增补“AI 应用工程范式变迁”与 SLO 两条 sidenote；更新 Anthropic Prompt engineering 精读链接（原 system-prompts / few-shot-examples 已合并到 claude-prompting-best-practices），并补充 OpenAI、LangChain 与《深入理解 AI Agent》选读。
 - 2026-10-31：Lesson 0008《LangGraph I：把循环画成图》交付（含 `labs/0008-langgraph-basics`：StateGraph、reducer、条件边、预算终止、13 个离线测试；新增 `reference/langgraph-checklist.html`）。当前 LangGraph 1.2.x 要求 Python >= 3.10，lab 需用 3.12 建 venv；旧 lab 仍兼容 3.9。已在 Python 3.12.16 + LangGraph 1.2.19 上跑通全部测试。
-- 尚未获得 lab 1–8 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
+- 2026-11-04：Lesson 0009《LangGraph II：可恢复的 Agent》交付（含 `labs/0009-langgraph-durability`：SQLite checkpointer、interrupt/Command 审批流、durability=sync、stream_mode updates/custom、崩溃恢复与幂等台账、9 个离线测试；新增 `reference/langgraph-durability-checklist.html`）。已在 Python 3.12.16 + LangGraph 1.2.19 + langgraph-checkpoint-sqlite 3.1.3 上跑通全部测试与 CLI 流程。核心观察：checkpoint 在 super-step 边界写；resume 时已完成节点不重跑、未完成节点整段重跑；checkpoint 不是外部副作用的事务边界，写操作必须带幂等键；resume 会重放 interrupt 前的 stream 事件，消费者需去重。
+- 尚未获得 lab 1–9 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
 - 第 1 课的核心观察：模型只输出 tool_calls，不执行；temperature=0 不保证绝对确定；结构化输出必须 schema + 校验 + 修复循环。
 - 第 2 课的核心观察：baseline prompt 23 token，exact 0.500、schema 0.800；engineered prompt 339 token，exact 1.000、schema 1.000。上下文工程的交易是“用预算买确定性”，不是越长越好。
 - 第 5 课的核心观察：离线 `vector(lexical)` 只是词面向量，不能证明语义检索的收益；真实结论要等用户配置 embedding 后跑 dense/hybrid。

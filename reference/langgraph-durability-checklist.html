@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LangGraph 持久化与审批清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.85rem 1rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+  .check-card h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.22rem 0; }
+  .check-grid + h2 { margin-top: 2.4rem; }
+  @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+  .mini-table td:first-child { white-space: nowrap; font-family: var(--mono); font-size: 0.76rem; }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>LangGraph 持久化与审批清单</h1>
+  <p class="subtitle">checkpoint 在 super-step 边界，interrupt 是持久化的暂停，stream 是观察面。</p>
+  <div class="meta">
+    <span>首次建立 2026-11-04</span>
+    <span>配套 Lesson 0009</span>
+    <span>Checkpoint · Interrupt · Streaming</span>
+    <span>可打印</span>
+  </div>
+
+  <p class="lede">
+    这张清单只回答一个问题：当 Agent 要跨进程、等人工、再恢复时，哪些地方最容易出错？
+    先把心智模型压成三句话，再按 API、规则、失败模式逐项检查。
+  </p>
+
+  <h2 id="model"><span class="num">01</span>三句话心智模型</h2>
+
+  <div class="formula">
+    checkpoint<sub>t</sub> = snapshot(state<sub>t</sub>, pending_tasks<sub>t</sub>)
+  </div>
+
+  <ol>
+    <li><strong>checkpoint 在 super-step 边界写</strong>：一轮节点跑完、增量按 reducer 合并之后，框架才落盘；不是每个节点、每行代码都写。</li>
+    <li><strong>resume 重放未完成的 super-step</strong>：已完成节点跳过；中断/失败的节点从函数第一行重跑，不是从 <code>interrupt()</code> 那一行继续。</li>
+    <li><strong>外部副作用不在 checkpoint 事务里</strong>：写操作必须带幂等键，或放进 outbox / 唯一约束，否则 resume 会重复执行。</li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="label">最容易犯的错</span>
+    <p>
+      把“checkpoint 已保存”当成“外部动作已提交”。两者之间没有分布式事务；
+      在“外部调用成功、节点返回之前”崩溃，是最典型的重复执行窗口。
+    </p>
+  </div>
+
+  <h2 id="skeleton"><span class="num">02</span>最小骨架</h2>
+
+  <pre><code>import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.types import Command, interrupt
+
+conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+graph = builder.compile(checkpointer=SqliteSaver(conn))
+
+config = {"configurable": {"thread_id": "incident-42"}}
+
+# 1) 运行到 interrupt 并暂停
+result = graph.invoke(initial_state(), config, durability="sync")
+pending = result["__interrupt__"][0]
+print(pending.value)
+
+# 2) 同一个 thread_id，恢复
+result = graph.invoke(
+    Command(resume={"approved": True, "approver": "alice", "approval_id": "APR-7"}),
+    config,
+    durability="sync",
+)
+
+# 3) 检查暂停点
+snapshot = graph.get_state(config)
+snapshot.next                       # ('approval',)
+snapshot.tasks[0].interrupts[0]     # Interrupt(value=..., id=...)</code></pre>
+
+  <h2 id="checkpoints"><span class="num">03</span>Checkpoint 检查</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>Thread</h4>
+      <ul>
+        <li><code>thread_id</code> 是恢复键，不是用户 ID</li>
+        <li>resume 必须用同一个 <code>thread_id</code></li>
+        <li>新 ID = 新时间线，看不到旧状态</li>
+        <li>Postgres 下 ID 长度 &lt; 255</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>Checkpointer</h4>
+      <ul>
+        <li>测试用 <code>InMemorySaver</code></li>
+        <li>本地用 <code>SqliteSaver</code></li>
+        <li>生产用 <code>PostgresSaver</code> + <code>setup()</code></li>
+        <li>多实例必须共享同一个 checkpoint 库</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>State</h4>
+      <ul>
+        <li>只放可序列化的值</li>
+        <li>不塞 client、文件句柄、密钥</li>
+        <li>schema 变更要考虑旧 checkpoint</li>
+        <li>长线程制定保留 / 归档策略</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>副作用</h4>
+      <ul>
+        <li>写工具必须有幂等键</li>
+        <li>幂等键进外部唯一约束</li>
+        <li>副作用记录进 state 便于审计</li>
+        <li>只读工具可以安全重放</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="interrupts"><span class="num">04</span>Interrupt 规则速查</h2>
+
+  <table>
+    <thead><tr><th>规则</th><th>违反后的表现</th><th>正确做法</th></tr></thead>
+    <tbody>
+      <tr><td>需要 checkpointer + thread_id</td><td>运行时直接报错</td><td><code>compile(checkpointer=...)</code></td></tr>
+      <tr><td>resume 用同一个 thread_id</td><td>重新开始，旧暂停还在</td><td>把 thread_id 持久化到任务表</td></tr>
+      <tr><td>节点从第一行重跑</td><td>interrupt 前的日志/写操作重复</td><td>前置代码保持纯；副作用带幂等键</td></tr>
+      <tr><td>一个节点每次只放一个 interrupt</td><td>循环里 resume 指数级重放</td><td>state 存当前问题 + 条件边回环</td></tr>
+      <tr><td>不要 <code>try/except</code> 包 interrupt</td><td>暂停协议被破坏</td><td>让异常穿透</td></tr>
+      <tr><td>并行 interrupt 按 id 配对</td><td>审批值错配到别的任务</td><td><code>Command(resume={id: value})</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="stream"><span class="num">05</span>Streaming 模式速查</h2>
+
+  <table class="mini-table">
+    <thead><tr><th>mode</th><th>事件内容</th><th>适合</th><th>注意</th></tr></thead>
+    <tbody>
+      <tr><td>values</td><td>完整 state 快照</td><td>调试面板</td><td>每步都推，可能很大</td></tr>
+      <tr><td>updates</td><td><code>{node: 增量}</code></td><td>进度、审计、测试</td><td>同一步的并行更新分开到达</td></tr>
+      <tr><td>messages</td><td><code>(chunk, metadata)</code></td><td>逐 token UI</td><td>子图要 <code>subgraphs=True</code></td></tr>
+      <tr><td>custom</td><td><code>get_stream_writer()</code> 事件</td><td>业务进度</td><td>resume 后会重发</td></tr>
+      <tr><td>debug</td><td>任务 + checkpoint 细节</td><td>排查调度</td><td>输出冗长</td></tr>
+      <tr><td>checkpoints</td><td>与 <code>get_state()</code> 同形</td><td>外部镜像 / 审计</td><td>需要 checkpointer</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <span class="label">v2 事件形状</span>
+    <p>
+      传 <code>version="v2"</code> 时，每个事件是 <code>{"type": ..., "ns": ..., "data": ...}</code>。
+      <code>ns</code> 为空表示根图；子图事件带任务路径。多模式流按 <code>type</code> 分支即可。
+    </p>
+  </div>
+
+  <h2 id="durability"><span class="num">06</span>Durability 模式</h2>
+
+  <table>
+    <thead><tr><th>模式</th><th>写盘时机</th><th>崩溃窗口</th><th>适用</th></tr></thead>
+    <tbody>
+      <tr><td><code>sync</code></td><td>下一步开始前同步写</td><td>最小</td><td>审批、写操作、不可丢任务</td></tr>
+      <tr><td><code>async</code></td><td>下一步执行时异步写（默认）</td><td>小</td><td>大多数在线 Agent</td></tr>
+      <tr><td><code>exit</code></td><td>只在退出 / 报错 / interrupt 时写</td><td>最大</td><td>可整体重跑的批处理</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small">
+    新 thread 用 <code>exit</code> 时，中途崩溃可能让 thread 完全不存在。
+    需要区分“没接收”和“接收了但丢了”，就在 checkpointer 外先写 outbox / admission 记录。
+  </p>
+
+  <h2 id="failures"><span class="num">07</span>常见失败与定位</h2>
+
+  <table>
+    <thead><tr><th>现象</th><th>最可能的原因</th><th>处理</th></tr></thead>
+    <tbody>
+      <tr><td>resume 后又从头开始</td><td>thread_id 变了</td><td>用原来的 ID；检查配置来源</td></tr>
+      <tr><td>interrupt 直接报错</td><td>没有 checkpointer</td><td><code>compile(checkpointer=...)</code></td></tr>
+      <tr><td>恢复后外部动作执行两次</td><td>节点重跑 + 无幂等键</td><td>加唯一约束 / 幂等键 / outbox</td></tr>
+      <tr><td>审批值串到别的任务</td><td>并行 interrupt 没按 id 配对</td><td>用 <code>{interrupt_id: value}</code></td></tr>
+      <tr><td>进度事件重复</td><td>resume 重放 interrupt 之前的代码</td><td>事件带 id，消费端去重</td></tr>
+      <tr><td>checkpoint 存不进去</td><td>state 里有不可序列化对象</td><td>只存原始数据；大对象放外部存储</td></tr>
+      <tr><td>崩溃后 thread 消失</td><td>用了 <code>durability="exit"</code></td><td>关键路径改 <code>sync</code>；加 admission 记录</td></tr>
+      <tr><td>时间旅行后状态“变了”</td><td>以为 <code>update_state</code> 是回滚</td><td>它是分叉；旧 checkpoint 保留，分支成为最新</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="tests"><span class="num">08</span>离线测试配方</h2>
+
+  <ul class="checklist">
+    <li><label><input type="checkbox"><span><strong>暂停</strong>：首次 invoke 后 <code>state.next == ("approval",)</code>，且 <code>tasks[0].interrupts</code> 非空。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>批准</strong>：resume 后副作用恰好一次，approver / approval_id 进入 state。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>拒绝</strong>：resume 后副作用为零，<code>stop_reason="rejected"</code>。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>非法批准</strong>：缺少 approver / approval_id 时不执行，返回结构化原因。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>崩溃恢复</strong>：副作用后抛异常，换新连接/新图 <code>invoke(None, config)</code>；已完成节点计数不变。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>幂等对比</strong>：关闭幂等后同一 key 产生两条记录，开启后只有一条。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>流式顺序</strong>：updates 的节点顺序符合图；resume 后中断节点重新出现。</span></label></li>
+    <li><label><input type="checkbox"><span><strong>历史</strong>：<code>get_state_history</code> 能找到带 interrupt 的 checkpoint。</span></label></li>
+  </ul>
+
+  <h2 id="java"><span class="num">09</span>Java 后端对照</h2>
+
+  <table>
+    <thead><tr><th>Agent 概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td><code>thread_id</code></td><td>流程实例 ID / 业务流水号</td></tr>
+      <tr><td>checkpointer</td><td>状态快照 + 事务日志 / 历史表</td></tr>
+      <tr><td><code>interrupt()</code></td><td>user task / 人工审批节点</td></tr>
+      <tr><td><code>Command(resume=...)</code></td><td>完成任务 / 审批回调</td></tr>
+      <tr><td>幂等键</td><td>唯一约束 / 去重表 / outbox</td></tr>
+      <tr><td><code>stream_mode</code></td><td>领域事件 / SSE / trace span</td></tr>
+      <tr><td><code>get_state_history</code></td><td>审计回放</td></tr>
+    </tbody>
+  </table>
+
+  <div class="source-card">
+    <div class="label">出处</div>
+    <h3>本清单的依据</h3>
+    <p>
+      LangGraph — <a href="https://docs.langchain.com/oss/python/langgraph/checkpointers">Checkpointers</a> ·
+      <a href="https://docs.langchain.com/oss/python/langgraph/interrupts">Interrupts</a> ·
+      <a href="https://docs.langchain.com/oss/python/langgraph/streaming">Streaming</a> ·
+      <a href="https://docs.langchain.com/oss/python/langgraph/use-time-travel">Time travel</a> ·
+      <a href="https://docs.langchain.com/oss/python/langgraph/persistence">Persistence</a> ·
+      HumanLayer — <a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a>
+    </p>
+  </div>
+
+  <nav class="footer-nav">
+    <a href="../lessons/0009-langgraph-durability.html">← 第 9 课：可恢复的 Agent</a>
+    <a href="langgraph-checklist.html">LangGraph 图清单</a>
+    <a class="next" href="course-roadmap.html">课程路线图 →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

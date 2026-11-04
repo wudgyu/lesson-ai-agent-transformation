@@ -160,10 +160,17 @@
         <tr id="term-conditional-edge"><td>条件边<span class="en">conditional edge</span></td><td>由路由函数根据当前 state 选择下一个节点的边。路由函数返回节点名或 END；映射表可把业务返回值翻译成节点名。</td><td>W2 D9</td></tr>
         <tr id="term-recursion-limit"><td>递归上限<span class="en">recursion_limit</span></td><td>LangGraph 对一次运行中 super-step 数的硬上限，超过时抛 GraphRecursionError。它是防失控的框架层兜底，不是业务预算。</td><td>W2 D9</td></tr>
         <tr id="term-command"><td>Command</td><td>LangGraph 中把状态更新与下一步路由合并到节点返回值的写法：<code>Command(update=..., goto=...)</code>。适合把控制流内聚在节点里。</td><td>W2 D9</td></tr>
-        <tr id="term-checkpoint"><td>检查点<span class="en">checkpoint</span></td><td>把 Agent 每一步的状态持久化。支持断点恢复、时间旅行调试、多会话隔离。</td><td>W2 L7</td></tr>
-        <tr id="term-durable-execution"><td>持久化执行<span class="en">durable execution</span></td><td>进程崩溃或人工暂停后，任务能从上次检查点继续，且不重复执行有副作用的操作。</td><td>W2 D13</td></tr>
-        <tr id="term-idempotency"><td>幂等<span class="en">idempotency</span></td><td>同一操作重复执行，效果与执行一次相同。Agent 重试、断点恢复、模型重复调用时，写工具必须幂等。</td><td>W1 L4 · W2 L7</td></tr>
-        <tr id="term-hitl"><td>人在回路<span class="en">human-in-the-loop</span></td><td>在关键动作前暂停，等待人类批准、修改或补充信息。高风险工具（转账、重启、删除）的默认配置。</td><td>W2 D13</td></tr>
+        <tr id="term-checkpoint"><td>检查点<span class="en">checkpoint</span></td><td>把 Agent 每一步的状态持久化。支持断点恢复、时间旅行调试、多会话隔离。</td><td>W2 L7 · L9</td></tr>
+        <tr id="term-checkpointer"><td>检查点存储<span class="en">checkpointer</span></td><td>按 thread 保存图状态快照的组件：InMemorySaver、SqliteSaver、PostgresSaver。它在 super-step 边界写入，不是每行代码都写。</td><td>W2 L9</td></tr>
+        <tr id="term-thread-id"><td>线程 ID<span class="en">thread_id</span></td><td>一条 checkpoint 时间线的恢复键。resume 必须使用同一个 thread_id；换新 ID 等于开一条全新的时间线。</td><td>W2 L9</td></tr>
+        <tr id="term-interrupt"><td>中断<span class="en">interrupt</span></td><td>LangGraph 的持久化暂停原语：在节点内调用后保存 checkpoint 并把控制权交还调用方；恢复时节点从头重跑，resume 值成为它的返回值。</td><td>W2 L9</td></tr>
+        <tr id="term-resume"><td>恢复<span class="en">resume</span></td><td>用 Command(resume=...) 与同一个 thread_id 继续一个暂停的图。已完成节点不重跑；未完成节点整段重跑。</td><td>W2 L9</td></tr>
+        <tr id="term-durability"><td>持久化级别<span class="en">durability</span></td><td>checkpoint 的写盘时机：sync 下一步前同步写、async 异步写（默认）、exit 只在退出时写。级别越高，崩溃窗口越小。</td><td>W2 L9</td></tr>
+        <tr id="term-stream-mode"><td>流模式<span class="en">stream_mode</span></td><td>graph.stream() 的事件粒度：values 快照、updates 节点增量、messages token、custom 业务事件、debug / checkpoints 运行时细节。</td><td>W2 L9</td></tr>
+        <tr id="term-time-travel"><td>时间旅行<span class="en">time travel</span></td><td>用 get_state_history 查看旧 checkpoint，用 update_state 从旧点分叉重放。用于调试与复盘，不是生产回滚。</td><td>W2 L9</td></tr>
+        <tr id="term-durable-execution"><td>持久化执行<span class="en">durable execution</span></td><td>进程崩溃或人工暂停后，任务能从上次检查点继续，且不重复执行有副作用的操作。</td><td>W2 L9 · D13</td></tr>
+        <tr id="term-idempotency"><td>幂等<span class="en">idempotency</span></td><td>同一操作重复执行，效果与执行一次相同。Agent 重试、断点恢复、模型重复调用时，写工具必须幂等。</td><td>W1 L4 · W2 L7 · L9</td></tr>
+        <tr id="term-hitl"><td>人在回路<span class="en">human-in-the-loop</span></td><td>在关键动作前暂停，等待人类批准、修改或补充信息。高风险工具（转账、重启、删除）的默认配置。</td><td>W2 L9 · D13</td></tr>
         <tr id="term-handoff"><td>交接<span class="en">handoff</span></td><td>一个 Agent 把控制权连同上下文交给另一个 Agent。OpenAI Agents SDK 的核心多 Agent 原语。</td><td>W2 D11</td></tr>
         <tr id="term-supervisor"><td>Supervisor</td><td>一个负责分派任务、汇总结果的协调 Agent；子 Agent 各自专注一个领域。比“全知全能单 Agent”更可控。</td><td>W2 D11</td></tr>
         <tr id="term-mcp"><td>MCP</td><td>Model Context Protocol：把工具、资源、提示词以标准协议暴露给任意 Agent 客户端。2026-07 版本转向无状态核心。</td><td>W2 D12</td></tr>
