@@ -305,7 +305,7 @@
     <tbody>
       <tr><td>1. ID 有效性</td><td>引用的 [S#] 是否在提供的来源里</td><td>极低，纯规则</td><td>编造来源编号</td></tr>
       <tr><td>2. Quote 包含</td><td>quote 是否是来源中的原句/子串</td><td>低，纯规则</td><td>改写给错、引用错段落</td></tr>
-      <tr><td>3. 结论蕴含</td><td>quote 是否真的推出答案中的 claim</td><td>高，NLI / LLM judge</td><td>引用存在但不支持、过度推断</td></tr>
+      <tr><td>3. 结论蕴含</td><td>quote 是否真的推出答案中的 claim</td><td>高，NLI / LLM judge</td><td>引用存在但不支持、过度推断<p class="sidenote">NLI：自然语言推理（Natural Language Inference）的缩写，它指代一种用于判断两个文本片段之间逻辑关系（如蕴含、矛盾或中立）的任务。</p></td></tr>
       <tr><td>4. 人工审计</td><td>高风险场景抽样复核</td><td>最高</td><td>细微语义偏差、业务判断错误</td></tr>
     </tbody>
   </table>
@@ -371,6 +371,9 @@
 
   <div class="callout note">
     <span class="label">把失败点映射到你的指标</span>
+    <p class="sidenote">
+      MRR：Mean Reciprocal Rank，平均倒数排名
+    </p>
     <p>
       FP1 → abstention accuracy；FP2 → recall / MRR；FP3 → context precision / context chars；
       FP4–FP7 → answer correctness、faithfulness、citation coverage、format compliance。
