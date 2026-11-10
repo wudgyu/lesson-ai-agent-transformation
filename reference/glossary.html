@@ -57,10 +57,11 @@
   </p>
 
   <div class="callout note">
-    <span class="label">三个最容易混淆的区别</span>
+    <span class="label">四个最容易混淆的区别</span>
     <p><strong>Agent vs Workflow：</strong>控制流由谁决定。代码写死的是 workflow；模型每步自己决定的是 agent。</p>
     <p><strong>Tool calling vs Agent：</strong>工具调用只是一次能力扩展；Agent 是在循环里根据观察反复决定下一步。</p>
     <p><strong>RAG vs Memory：</strong>RAG 检索外部知识；Memory 保存这次/历次交互的状态与经验。两者都进上下文，但来源与生命周期不同。</p>
+    <p><strong>Supervisor vs Handoff：</strong>控制权是否转移。Supervisor 保持控制、接收摘要；Handoff 把控制权交给 specialist，通常共享会话历史。</p>
   </div>
 
   <div class="glossary-group">
@@ -143,7 +144,10 @@
         <tr id="term-context-pollution"><td>上下文污染<span class="en">context pollution</span></td><td>长上下文中的四类问题：poisoning（错误信息被沿用）、distraction（被长文带偏）、confusion（无关内容影响回答）、clash（上下文互相矛盾）。</td><td>W2 L7</td></tr>
         <tr id="term-memory"><td>记忆<span class="en">memory</span></td><td>跨轮次保留的信息。短期记忆通常是会话消息；长期记忆是外部存储的笔记、偏好、经验。</td><td>W2 L7</td></tr>
         <tr id="term-compaction"><td>压缩<span class="en">compaction</span></td><td>上下文接近上限时，把历史总结成更短的状态并重新开始，保留关键决策与未解决问题。是有损的状态转移，不是人类摘要。</td><td>W2 L7</td></tr>
-        <tr id="term-subagent"><td>子 Agent<span class="en">sub-agent</span></td><td>由主 Agent 派生的专用 Agent，独立探索大量信息后只返回精简结论，用于突破上下文与并行探索的限制。</td><td>W2 D11</td></tr>
+        <tr id="term-subagent"><td>子 Agent<span class="en">sub-agent</span></td><td>由主 Agent 派生的专用 Agent，在独立上下文中探索大量信息后只返回精简结论，用于突破上下文与并行探索的限制。它是一种实现单元，不是控制拓扑。</td><td>W2 D11</td></tr>
+        <tr id="term-specialist"><td>专家 Agent<span class="en">specialist</span></td><td>在多 Agent 系统里承担某个领域或阶段的专用 Agent；可以是 supervisor 的 worker，也可以是 handoff 的接收方。它描述职责，不描述控制权。</td><td>W2 D11</td></tr>
+        <tr id="term-context-isolation"><td>上下文隔离<span class="en">context isolation</span></td><td>让子 Agent 在自己的上下文窗口里工作，只把摘要与证据带回主线程。它降低主上下文的注意力压力，但增加总 token，并可能丢掉父级的隐含决策。</td><td>W2 D11</td></tr>
+        <tr id="term-delegation-contract"><td>委派契约<span class="en">delegation contract</span></td><td>父 Agent 给子 Agent 的任务接口：目标、输入、已确认约束、可用工具、输出 schema、预算与停止条件。缺契约就会重复、遗漏或冲突。</td><td>W2 D11</td></tr>
       </tbody>
     </table>
   </div>
@@ -171,8 +175,11 @@
         <tr id="term-durable-execution"><td>持久化执行<span class="en">durable execution</span></td><td>进程崩溃或人工暂停后，任务能从上次检查点继续，且不重复执行有副作用的操作。</td><td>W2 L9 · D13</td></tr>
         <tr id="term-idempotency"><td>幂等<span class="en">idempotency</span></td><td>同一操作重复执行，效果与执行一次相同。Agent 重试、断点恢复、模型重复调用时，写工具必须幂等。</td><td>W1 L4 · W2 L7 · L9</td></tr>
         <tr id="term-hitl"><td>人在回路<span class="en">human-in-the-loop</span></td><td>在关键动作前暂停，等待人类批准、修改或补充信息。高风险工具（转账、重启、删除）的默认配置。</td><td>W2 L9 · D13</td></tr>
-        <tr id="term-handoff"><td>交接<span class="en">handoff</span></td><td>一个 Agent 把控制权连同上下文交给另一个 Agent。OpenAI Agents SDK 的核心多 Agent 原语。</td><td>W2 D11</td></tr>
-        <tr id="term-supervisor"><td>Supervisor</td><td>一个负责分派任务、汇总结果的协调 Agent；子 Agent 各自专注一个领域。比“全知全能单 Agent”更可控。</td><td>W2 D11</td></tr>
+        <tr id="term-handoff"><td>交接<span class="en">handoff</span></td><td>一个 Agent 把<strong>控制权</strong>连同选定上下文交给另一个 Agent；接收方可以直接面对用户，也可以继续转交。与 supervisor 的关键区别是控制权转移。</td><td>W2 D11</td></tr>
+        <tr id="term-supervisor"><td>Supervisor</td><td>保持控制权的协调 Agent：把子任务作为受控工具/子图调用，只接收摘要与证据，再自己汇总回答。与 handoff 的关键区别是控制权不转移。</td><td>W2 D11</td></tr>
+        <tr id="term-orchestrator-worker"><td>编排者-工作者<span class="en">orchestrator-worker</span></td><td>Anthropic 对 supervisor 模式的称呼：lead 规划并分派，worker 在独立上下文里执行，返回精简结论；lead 决定是否追加 worker。</td><td>W2 D11</td></tr>
+        <tr id="term-router"><td>路由器<span class="en">router</span></td><td>无状态分类器：把请求路由给一个或多个 specialist，再合并输出。它不做多跳委派，也不维护对话状态。</td><td>W2 D11</td></tr>
+        <tr id="term-mast"><td>MAST</td><td>Multi-Agent System Failure Taxonomy：14 种失败模式，分属系统设计、agent 间错位、任务验证三类；用于系统化诊断多 Agent 失败。</td><td>W2 D11 · W3</td></tr>
         <tr id="term-mcp"><td>MCP</td><td>Model Context Protocol：把工具、资源、提示词以标准协议暴露给任意 Agent 客户端。2026-07 版本转向无状态核心。</td><td>W2 D12</td></tr>
         <tr id="term-sandbox"><td>沙箱<span class="en">sandbox</span></td><td>限制工具可访问的文件、网络、进程与权限的隔离环境。执行模型生成的代码或命令时必须使用。</td><td>W3 D18</td></tr>
       </tbody>

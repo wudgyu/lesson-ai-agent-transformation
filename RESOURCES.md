@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-11-04。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-11-10。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -108,7 +108,11 @@
 - [Anthropic — Writing Effective Tools for Agents](https://www.anthropic.com/engineering/writing-tools-for-agents)
   工具设计的 5 条原则：少而好、命名空间、返回语义化上下文、token 效率、把 description 当 prompt。**第 2 周精读**。
 - [Anthropic — How We Built Our Multi-Agent Research System](https://www.anthropic.com/engineering/multi-agent-research-system)
-  多 Agent 的真实工程复盘：orchestrator-worker、token 成本、评测与失败模式。第 2 周选读。
+  **第 10 课精读**。orchestrator-worker 的真实工程复盘：90.2% 内部评测提升、约 15× chat token、token 解释 80% 方差、3–5 并行 subagents、失败模式与 LLM-judge 评测。
+- [Cognition — Don't Build Multi-Agents](https://cognition.com/blog/dont-build-multi-agents)
+  **第 10 课精读（反方）**。共享完整上下文与 agent trace；动作携带隐含决策；Flappy Bird 例子；建议默认单线程线性 Agent，用压缩而非并行切片处理上下文溢出。
+- [Why Do Multi-Agent LLM Systems Fail? (MAST, arXiv:2503.13657)](https://arxiv.org/abs/2503.13657)
+  **第 10 课精读（选段）**。14 种失败模式、3 类（system design / inter-agent misalignment / task verification）；1,600+ 轨迹、7 个框架、0.88 kappa。
 - [ReAct: Synergizing Reasoning and Acting in Language Models (arXiv:2210.03629)](https://arxiv.org/abs/2210.03629)
   ReAct 循环的原始论文。读第 1–2 节即可建立直觉。**第 3 课选读**。
 - [Lilian Weng — LLM Powered Autonomous Agents](https://lilianweng.github.io/posts/2023-06-23-agent/)
@@ -131,6 +135,18 @@
 
 - [OpenAI Agents SDK (Python)](https://openai.github.io/openai-agents-python/)
   核心原语：Agent、Handoff、Guardrail、Session、Tracing。第 2 周对照学习。
+- [OpenAI Agents SDK — Handoffs](https://openai.github.io/openai-agents-python/handoffs/)
+  **第 10 课精读**。handoff 作为 tool（`transfer_to_<agent>`）、控制转移、默认接管对话历史、`input_filter` / `HandoffInputData` 历史过滤、`Agent.as_tool()` 与 handoff 的分工。
+- [OpenAI — Orchestration and handoffs](https://developers.openai.com/api/docs/guides/agents/orchestration)
+  第 10 课选读。manager（agents-as-tools）vs handoffs 的对比与选型；先从一个 Agent 开始，只在能力/策略隔离、prompt 清晰度或 trace 可读性有收益时拆 specialist。
+- [LangChain — Multi-agent](https://docs.langchain.com/oss/python/langchain/multi-agent)
+  **第 10 课精读**。subagents / handoffs / skills / router / custom workflow 五种模式；调用次数与 token 成本的示例对比；按并发、上下文隔离、直接对话与状态连续性选型。
+- [LangChain — Subagents](https://docs.langchain.com/oss/python/langchain/multi-agent/subagents)
+  第 10 课精读。subagent 默认无状态、独立上下文窗口；`create_agent` + `@tool` 包装；同步/异步、tool-per-agent / single dispatch、输入输出与 checkpointer 设计。
+- [LangChain — Handoffs](https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs)
+  第 10 课精读。`Command(goto=..., update={...})` 与 `graph=Command.PARENT`；单 Agent + middleware 与多子图两种实现；消息过滤与 tool_call / ToolMessage 配对。
+- [LangChain — Migrate from langgraph-supervisor](https://docs.langchain.com/oss/python/migrate/langgraph-supervisor)
+  2026 现状：`langgraph-supervisor` 不再积极维护，官方建议改用 tool 包装的 subagent 或 handoff 写法；迁移映射与 interrupt/resume 传播规则。
 - [LangGraph v1 文档](https://docs.langchain.com/oss/python/langgraph/overview)
   状态图、reducer、checkpoint、interrupt、durable execution。**第 2 周主框架**。
 - [LangGraph — Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api)

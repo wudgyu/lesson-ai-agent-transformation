@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 10 课 · 多 Agent：拆角色，还是拆上下文？</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 第 2 周 · 第 10 课</div>
+  <h1>多 Agent：拆角色，还是拆上下文？</h1>
+  <p class="subtitle">supervisor 保持控制，handoff 转移控制，sub-agent 隔离上下文；先证明单 Agent 不够，再拆。</p>
+  <div class="meta">
+    <span>Lesson 0010</span>
+    <span>约 100 分钟</span>
+    <span>阅读 30′ · 测验 6′ · Lab 55′</span>
+    <span>无需 API key · Python ≥ 3.10</span>
+  </div>
+
+  <p class="lede">
+    RepoMedic 接到一条告警：order-service 连接池 48/50，错误率 0.8%，OrderQueryService 疑似 N+1。
+    要定位根因，它得同时看日志、代码和 runbook。最直接的方案是一个 Agent 带三个工具；
+    但三份原始材料会把主上下文撑爆。于是你想拆成三个 specialist。
+    这一课要回答：<strong>什么时候拆真的能提高可靠性，什么时候只是把复杂度换了个地方？</strong>
+  </p>
+
+  <p class="small">
+    术语以<a href="../reference/glossary.html">术语表</a>为准：
+    <a href="../reference/glossary.html#term-supervisor">supervisor</a>、
+    <a href="../reference/glossary.html#term-handoff">handoff</a>、
+    <a href="../reference/glossary.html#term-subagent">sub-agent</a>、
+    <a href="../reference/glossary.html#term-specialist">specialist</a>、
+    <a href="../reference/glossary.html#term-context-isolation">context isolation</a>、
+    <a href="../reference/glossary.html#term-delegation-contract">delegation contract</a>。
+  </p>
+
+  <details class="recall">
+    <summary>90 秒回忆：先别往下看，回答第 9 课的三件事
+      <ol>
+        <li>checkpoint 写在哪个粒度上？</li>
+        <li>resume 时，中断节点从哪一行开始执行？</li>
+        <li>哪种 durability 模式的崩溃窗口最大？</li>
+      </ol>
+    </summary>
+    <p><strong>对答案：</strong>
+      <ol>
+        <li>super-step 边界：一轮节点跑完、增量合并之后。</li>
+        <li>从节点函数第一行重跑；不是从 <code>interrupt()</code> 那一行继续。</li>
+        <li><code>exit</code>：只在正常结束、报错或 interrupt 时写。</li>
+      </ol>
+    </p>
+    <p class="small">有一题答不上来？先回 <a href="0009-langgraph-durability.html">第 9 课</a> 补一眼，再回来。</p>
+  </details>
+
+  <div class="toc no-print">
+    <div class="toc-title">本课地图</div>
+    <ol>
+      <li><a href="#why">一条告警，三个证据域</a></li>
+      <li><a href="#topologies">三种拓扑：控制权在哪</a></li>
+      <li><a href="#economics">上下文经济学：省注意力，不省 token</a></li>
+      <li><a href="#counterpoint">反方观点：为什么 Cognition 说别拆</a></li>
+      <li><a href="#contract">委派契约、预算与失败模式</a></li>
+      <li><a href="#eval">评测：和单 Agent 基线比</a></li>
+      <li><a href="#quiz">检验一下</a></li>
+      <li><a href="#lab">Lab：同一张任务，三种拓扑</a></li>
+      <li><a href="#java">和 Java 后端对照</a></li>
+    </ol>
+  </div>
+
+  <div class="callout win">
+    <span class="label">本课结束时，你能</span>
+    <p>① 说清 supervisor、handoff、sub-agent 三者的控制权与上下文边界；
+    ② 用委派契约、预算与去重，把“多 Agent”从角色扮演变成可验收的工程；
+    ③ 在同一评测集上比较单 Agent 与多 Agent 的 token、证据覆盖与失败模式，并做出取舍。</p>
+  </div>
+
+  <h2 id="why"><span class="num">01</span>一条告警，三个证据域<a class="anchor" href="#why">¶</a></h2>
+
+  <p>
+    先把场景具体化。RepoMedic 的可用证据有三类，每类的读取方式与输出量都不同：
+  </p>
+
+  <table>
+    <thead><tr><th>证据域</th><th>典型工具</th><th>一次调查的原始输出</th><th>真正要带回的结论</th></tr></thead>
+    <tbody>
+      <tr><td>日志</td><td><code>query_logs</code>、<code>check_health</code></td><td>几十到上万行堆栈、指标时间序列</td><td>3–5 条带时间戳的直接证据</td></tr>
+      <tr><td>代码</td><td><code>search_code</code>、<code>git_log</code></td><td>多个文件、调用链、提交差异</td><td>可疑代码位置与变更点</td></tr>
+      <tr><td>Runbook</td><td><code>search_runbook</code>、<code>search_incidents</code></td><td>历史事故、处置步骤、风险说明</td><td>一条可执行的缓解路径</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    单 Agent 的方案很自然：把三个工具都给一个循环，模型自己决定先查什么。
+    问题是，日志的 1000 行堆栈一旦进入主上下文，就会挤占后面读代码和 runbook 的注意力；
+    到生成最终答案时，最早读到的约束（例如“不要先调大连接池上限”）可能已经被淹掉。
+    这正是第 7 课讲的 context rot：上下文越长，模型对其中信息的利用越差。
+    <a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Anthropic — Effective Context Engineering</a>
+  </p>
+
+  <p>
+    多 Agent 的直觉是：让日志、代码、runbook 各自在一个独立上下文里调查，只把结论带回主线程。
+    这个直觉是对的，但它有一个前提：<strong>三条调查线可以独立决策，且结论可以用 schema 验收。</strong>
+    如果它们必须看到彼此的动作（例如改代码时必须知道日志里已经排除了什么），
+    拆开就会制造冲突假设。这个前提，是后面所有取舍的起点。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">先问一句</span>
+    <p>
+      这条告警真的需要三个域吗？如果日志已经给出“连接池 48/50、30s 超时”，
+      单 Agent 查一个工具就够了。多 Agent 的第一条成本，是它会让简单任务也变贵。
+      先用评测确认“单 Agent 在哪些场景不够”，再决定拆谁。
+    </p>
+  </div>
+
+  <h2 id="topologies"><span class="num">02</span>三种拓扑：控制权在哪<a class="anchor" href="#topologies">¶</a></h2>
+
+  <p>
+    多 Agent 的讨论经常把三个概念混在一起：supervisor、handoff、sub-agent。
+    它们不是同一层的选项。先看一张图：
+  </p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 990 330" role="img" aria-labelledby="topology-title topology-desc">
+      <title id="topology-title">单 Agent、supervisor 与 handoff 的控制流</title>
+      <desc id="topology-desc">左图单 Agent 在一个上下文里调用三个工具；中图 supervisor 保持控制，把任务分派给三个独立上下文的 worker，并接收摘要；右图 handoff 把控制权依次转移给日志、代码、runbook specialist，共享会话历史。</desc>
+      <defs>
+        <marker id="arrow-l10" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--rule-strong)"></path>
+        </marker>
+        <marker id="arrow-l10-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+        </marker>
+      </defs>
+
+      <text class="d-label" x="150" y="26">单 Agent</text>
+      <rect class="d-node-io" x="40" y="45" width="70" height="30" rx="5"></rect>
+      <text class="d-text" x="75" y="65">user</text>
+      <rect class="d-node-accent" x="145" y="38" width="120" height="44" rx="6"></rect>
+      <text class="d-text" x="205" y="57">Agent</text>
+      <text class="d-sub" x="205" y="73">one context</text>
+      <line class="d-arrow" x1="110" y1="60" x2="145" y2="60" marker-end="url(#arrow-l10)"></line>
+
+      <rect class="d-node" x="130" y="115" width="56" height="28" rx="4"></rect>
+      <text class="d-sub" x="158" y="133">logs</text>
+      <rect class="d-node" x="197" y="115" width="56" height="28" rx="4"></rect>
+      <text class="d-sub" x="225" y="133">code</text>
+      <rect class="d-node" x="264" y="115" width="56" height="28" rx="4"></rect>
+      <text class="d-sub" x="292" y="133">runbook</text>
+      <line class="d-arrow" x1="190" y1="82" x2="158" y2="115" marker-end="url(#arrow-l10)"></line>
+      <line class="d-arrow" x1="205" y1="82" x2="225" y2="115" marker-end="url(#arrow-l10)"></line>
+      <line class="d-arrow" x1="220" y1="82" x2="292" y2="115" marker-end="url(#arrow-l10)"></line>
+      <text class="d-label" x="150" y="178">所有观察进同一个窗口</text>
+
+      <text class="d-label" x="500" y="26">Supervisor</text>
+      <rect class="d-node-io" x="390" y="45" width="60" height="30" rx="5"></rect>
+      <text class="d-text" x="420" y="65">user</text>
+      <rect class="d-node-accent" x="485" y="38" width="110" height="44" rx="6"></rect>
+      <text class="d-text" x="540" y="57">lead</text>
+      <text class="d-sub" x="540" y="73">keeps control</text>
+      <line class="d-arrow" x1="450" y1="60" x2="485" y2="60" marker-end="url(#arrow-l10)"></line>
+
+      <rect class="d-node" x="470" y="120" width="70" height="32" rx="4"></rect>
+      <text class="d-sub" x="505" y="140">logs worker</text>
+      <rect class="d-node" x="555" y="120" width="70" height="32" rx="4"></rect>
+      <text class="d-sub" x="590" y="140">code worker</text>
+      <rect class="d-node" x="640" y="120" width="90" height="32" rx="4"></rect>
+      <text class="d-sub" x="685" y="140">runbook worker</text>
+      <line class="d-arrow" x1="525" y1="82" x2="505" y2="120" marker-end="url(#arrow-l10)"></line>
+      <line class="d-arrow" x1="540" y1="82" x2="590" y2="120" marker-end="url(#arrow-l10)"></line>
+      <line class="d-arrow" x1="555" y1="82" x2="685" y2="120" marker-end="url(#arrow-l10)"></line>
+      <line class="d-arrow" x1="505" y1="120" x2="525" y2="82" marker-end="url(#arrow-l10)"></line>
+      <line class="d-arrow" x1="590" y1="120" x2="545" y2="82" marker-end="url(#arrow-l10)"></line>
+      <line class="d-arrow" x1="685" y1="120" x2="560" y2="82" marker-end="url(#arrow-l10)"></line>
+      <text class="d-label" x="560" y="180">worker 只回摘要 + 证据</text>
+      <text class="d-sub" x="560" y="198">每个 worker 一个独立窗口</text>
+
+      <text class="d-label" x="800" y="26">Handoff</text>
+      <rect class="d-node-io" x="720" y="45" width="60" height="30" rx="5"></rect>
+      <text class="d-text" x="750" y="65">user</text>
+      <rect class="d-node-accent" x="800" y="38" width="70" height="44" rx="6"></rect>
+      <text class="d-text" x="835" y="57">triage</text>
+      <text class="d-sub" x="835" y="73">transfer</text>
+      <line class="d-arrow" x1="780" y1="60" x2="800" y2="60" marker-end="url(#arrow-l10-accent)"></line>
+
+      <rect class="d-node" x="760" y="120" width="60" height="32" rx="4"></rect>
+      <text class="d-sub" x="790" y="140">logs</text>
+      <rect class="d-node" x="830" y="120" width="60" height="32" rx="4"></rect>
+      <text class="d-sub" x="860" y="140">code</text>
+      <rect class="d-node" x="900" y="120" width="70" height="32" rx="4"></rect>
+      <text class="d-sub" x="935" y="140">runbook</text>
+      <line class="d-arrow-accent" x1="815" y1="82" x2="790" y2="120" marker-end="url(#arrow-l10-accent)"></line>
+      <line class="d-arrow-accent" x1="850" y1="82" x2="860" y2="120" marker-end="url(#arrow-l10-accent)"></line>
+      <line class="d-arrow-accent" x1="870" y1="82" x2="935" y2="120" marker-end="url(#arrow-l10-accent)"></line>
+      <text class="d-label" x="835" y="180">控制权依次转移</text>
+      <text class="d-sub" x="835" y="198">共享会话历史 · 需要过滤</text>
+    </svg>
+    <figcaption>三种拓扑的差别不在“有几个 Agent”，而在控制权是否转移、每个 Agent 能看到什么上下文。</figcaption>
+  </figure>
+
+  <h3>Supervisor：控制权留在 lead，worker 是受控调用</h3>
+
+  <p>
+    Supervisor（也叫 orchestrator-worker）是最常见的生产形态。Lead 负责规划、分派、汇总；
+    worker 拿到的是一份<strong>委派契约</strong>，在独立上下文里调查，只返回摘要与证据。
+    Worker 不直接和用户对话，也不决定下一步派谁。Anthropic 的多 Agent 研究系统就是这个结构：
+    lead 规划研究策略，并行启动 3–5 个 subagent，每个 subagent 用 3+ 个工具搜索，
+    返回精简结论，lead 再决定是否追加或收尾。
+    <a href="https://www.anthropic.com/engineering/multi-agent-research-system">Anthropic — How We Built Our Multi-Agent Research System</a>
+  </p>
+
+  <p>
+    在 LangGraph 里，worker 可以是一个独立的 <code>StateGraph</code>，被 lead 当普通函数调用；
+    在 OpenAI Agents SDK 里，对应的原语是 <code>Agent.as_tool()</code>：主 Agent 保持控制，
+    把 specialist 当作一个有 schema 的工具。
+    <a href="https://openai.github.io/openai-agents-python/handoffs/">OpenAI Agents SDK — Handoffs vs agents-as-tools</a>
+  </p>
+
+  <pre><code># Supervisor 的核心不是某个包，而是“子 Agent 是一个有契约的工具”
+worker = create_agent(model="...", tools=[query_logs, check_health])
+
+@tool("investigate_logs", description="在给定时间窗内查日志，返回 3 条证据")
+def investigate_logs(query: str) -&gt; dict:
+    result = worker.invoke({"messages": [{"role": "user", "content": query}]})
+    return {
+        "finding": result["messages"][-1].content,
+        "evidence": [],          # worker 必须回传证据
+        "confidence": "medium",
+        "open_questions": [],
+    }</code></pre>
+
+  <h3>Handoff：控制权转移，上下文共享</h3>
+
+  <p>
+    Handoff 不是“调用一个工具再回来”，而是<strong>把控制权交给另一个 Agent</strong>。
+    接收方可以继续调用工具、直接回复用户，或者再 handoff 给下一个阶段。
+    OpenAI Agents SDK 的定义是“一个 Agent 把任务委托给另一个 Agent”，默认情况下
+    新 Agent 会接管整段对话历史；SDK 通过 <code>input_filter</code> 让你决定哪些历史随控制权过去。
+  </p>
+
+  <p>
+    在 LangGraph 里，handoff 通常表现为节点返回
+    <code>Command(goto="code_agent", update={"active_agent": "code", ...})</code>；
+    多图场景用 <code>graph=Command.PARENT</code> 在父图里导航。
+    <a href="https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs">LangChain — Handoffs</a>
+  </p>
+
+  <pre><code>def transfer_to_code(state):
+    return Command(
+        goto="code_agent",
+        update={
+            "active_agent": "code",
+            # 显式决定哪些消息随控制权过去；不要默认把整个内部轨迹塞过去
+            "messages": filter_handoff_messages(state["messages"]),
+        },
+    )</code></pre>
+
+  <h3>Sub-agent：一种实现单元，不是拓扑</h3>
+
+  <p>
+    Sub-agent 强调的是<strong>上下文隔离</strong>：它在自己的窗口里读大量原始材料，
+    只把压缩后的结论带回主线程。它既可以是 supervisor 的 worker，也可以由 handoff 的
+    specialist 内部再调用。LangChain 的文档说得很直接：subagent 默认是无状态的，
+    每次调用都在一个干净上下文里工作，记忆留在主 Agent。
+    <a href="https://docs.langchain.com/oss/python/langchain/multi-agent/subagents">LangChain — Subagents</a>
+  </p>
+
+  <table>
+    <thead><tr><th>问题</th><th>Supervisor</th><th>Handoff</th></tr></thead>
+    <tbody>
+      <tr><td>谁控制下一步？</td><td>Lead 决定派谁、何时收尾</td><td>当前 specialist 决定是否转交</td></tr>
+      <tr><td>Worker 能直接回复用户吗？</td><td>通常不能，结果回 lead</td><td>可以，控制权已经在它手里</td></tr>
+      <tr><td>上下文如何流动？</td><td>每 worker 新窗口；只回摘要</td><td>共享会话；需要显式过滤</td></tr>
+      <tr><td>最适合</td><td>可并行的独立调查、工具/权限隔离、信息超窗口</td><td>有状态的多轮流程、阶段化对话、不同阶段不同策略</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <span class="label">Router 与 network</span>
+    <p>
+      还有两种常见变体：<strong>router</strong> 是一个无状态分类器，把请求分给一个或多个 specialist，
+      再把输出合并；它不做多跳委派。LangChain 文档的对比里，subagents 适合并发与上下文隔离，
+      handoffs 适合有状态、需要直接面对用户的流程；router 适合“一次请求、并行分域、最后合并”。
+      <strong>network/swarm</strong> 则允许任意 agent 之间互相转交，灵活性最高、可控性最差，
+      生产里通常要额外加预算与去重。
+    </p>
+  </div>
+
+  <h2 id="economics"><span class="num">03</span>上下文经济学：省注意力，不省 token<a class="anchor" href="#economics">¶</a></h2>
+
+  <p>
+    多 Agent 最容易被误解的一点：它<strong>不减少总 token</strong>，反而增加。
+    Anthropic 的报告给出了三个量级：
+  </p>
+
+  <ul>
+    <li>普通 chat 大约 1× token；一个 Agent 大约 4×；多 Agent 系统大约 <strong>15×</strong>。</li>
+    <li>在 BrowseComp 上，token 使用量单独解释了 <strong>80%</strong> 的性能方差，工具调用数与模型选择解释其余部分。</li>
+    <li>他们的内部研究评测里，Opus 4 lead + Sonnet 4 subagents 比单 Agent Opus 4 高 <strong>90.2%</strong>；代价是显著更高的 token 成本。</li>
+  </ul>
+
+  <p class="small">
+    来源：<a href="https://www.anthropic.com/engineering/multi-agent-research-system">Anthropic — How We Built Our Multi-Agent Research System</a>。
+    这些数字来自“breadth-first 研究”这一类任务，不是所有任务的通用结论。
+  </p>
+
+  <div class="formula">
+    多 Agent 的成本 = 单 Agent token + <strong>委派/汇总</strong> + <strong>重复探索</strong><br>
+    多 Agent 的收益 = <strong>主上下文更小</strong> + <strong>并行</strong> + <strong>权限/工具隔离</strong>
+  </div>
+
+  <p>
+    所以问题不是“多 Agent 是否更强”，而是“主上下文的注意力压力，是否已经大到值得用额外 token 去换”。
+    LangChain 文档做过一个具体的成本对比：在多领域任务里，subagents 模式约 5 次模型调用、~9K token；
+    handoffs 模式因为共享状态与历史，约 7+ 次调用、~14K+ token。前者的优势是上下文隔离与并行，
+    后者的优势是状态连续、可以直接多轮对话。
+    <a href="https://docs.langchain.com/oss/python/langchain/multi-agent">LangChain — Multi-agent</a>
+  </p>
+
+  <table>
+    <thead><tr><th>你想要的</th><th>代价</th><th>什么时候值得</th></tr></thead>
+    <tbody>
+      <tr><td>主线程不被 1000 行日志淹没</td><td>worker 的输入输出都要进总账；lead 要写清契约</td><td>原始材料远超主窗口，结论却很短</td></tr>
+      <tr><td>三条调查线并行</td><td>并发调度、超时、部分失败汇总</td><td>子任务互相独立，墙钟时间重要</td></tr>
+      <tr><td>读代码与执行重启用不同权限</td><td>多一套工具白名单、审批与审计</td><td>高风险动作需要隔离</td></tr>
+      <tr><td>specialist 直接和用户多轮对话</td><td>共享历史膨胀、历史过滤与角色配对</td><td>流程是阶段化对话，而不是一次性调查</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <span class="label">上下文隔离的另一面</span>
+    <p>
+      Worker 拿不到主线程的全部历史，这既是收益，也是风险。它可能重复父级已经排除的调查，
+      也可能做出与父级约束冲突的假设。Cognition 把这一点总结为“actions carry implicit decisions”：
+      如果 worker 必须看到另一个 worker 的动作才能正确决策，那么这两个任务就不该被拆成独立上下文。
+    </p>
+  </div>
+
+  <h2 id="counterpoint"><span class="num">04</span>反方观点：为什么 Cognition 说别拆<a class="anchor" href="#counterpoint">¶</a></h2>
+
+  <p>
+    2025 年 6 月，Cognition 的 Walden Yan 写了一篇被广泛讨论的反方文章
+    <a href="https://cognition.com/blog/dont-build-multi-agents">Don't Build Multi-Agents</a>。
+    核心论点不是“多 Agent 永远不行”，而是“在需要共享上下文的场景里，并行 subagent 非常脆弱”。
+    他给了两条原则：
+  </p>
+
+  <ol>
+    <li><strong>共享上下文，而且要共享完整的 agent trace，不只是单条消息。</strong>
+      只把初始任务描述传给子 Agent 不够；生产对话是多轮的，工具调用会改变后续解释。</li>
+    <li><strong>动作携带隐含决策，冲突的决策会带来坏结果。</strong>
+      两个子 Agent 即使拿到同一个任务，也可能基于各自看到的局部信息做出互相矛盾的假设，
+      最后由汇总方硬拼接。</li>
+  </ol>
+
+  <p>
+    他的例子很直观：让多个 Agent 并行实现一个 Flappy Bird，结果一个 Agent 画了马里奥风格的背景，
+    另一个画了不匹配的小鸟，拼在一起风格撕裂。问题不在单个 Agent 的能力，而在它们看不到彼此的动作。
+    他的建议是默认使用<strong>单线程线性 Agent</strong>，保持连续上下文；上下文不够时，
+    用模型把历史压缩成关键决策与事件，而不是把任务切片并行化。
+  </p>
+
+  <div class="compare">
+    <div class="good">
+      <h4>适合拆</h4>
+      <ul>
+        <li>日志、代码、runbook 三条独立调查线</li>
+        <li>子任务只需返回证据，不需要改共享状态</li>
+        <li>每个子任务有清晰的输出 schema</li>
+        <li>并行能显著缩短墙钟时间</li>
+        <li>工具/权限天然按域隔离</li>
+      </ul>
+    </div>
+    <div class="bad">
+      <h4>不适合拆</h4>
+      <ul>
+        <li>大多数编码任务：后一步依赖前一步的全部动作</li>
+        <li>子任务之间要不断同步中间决策</li>
+        <li>任务本身很小，委派契约比任务还长</li>
+        <li>只是想要“planner / researcher / writer”角色感</li>
+        <li>没有评测，无法证明拆完更好</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>
+    Anthropic 的结论与 Cognition 并不矛盾，只是适用边界不同。Anthropic 明确说多 Agent 适合
+    <strong>breadth-first、可独立并行的研究</strong>，不适合强耦合任务、大多数编码工作、
+    需要实时协调的场景；Cognition 说的正是后者。把这两篇放在一起读，你会得到一条更可靠的规则：
+    <strong>按“决策是否需要共享”来拆，而不是按“角色名称”来拆。</strong>
+  </p>
+
+  <h2 id="contract"><span class="num">05</span>委派契约、预算与失败模式<a class="anchor" href="#contract">¶</a></h2>
+
+  <p>
+    一旦决定拆，supervisor 与 worker 之间的接口就必须像后端 API 一样明确。
+    最危险的委派是“查一下日志”——范围、输出、约束、预算全缺失，worker 只能自由发挥。
+  </p>
+
+  <div class="compare">
+    <div class="bad">
+      <h4>坏委派</h4>
+      <p><code>查一下 order-service 的日志。</code></p>
+      <ul>
+        <li>没有时间窗口与服务水平</li>
+        <li>没有输出格式，无法验收</li>
+        <li>父级“先别重启”的约束丢失</li>
+        <li>worker 可能查了 10 分钟还在翻日志</li>
+      </ul>
+    </div>
+    <div class="good">
+      <h4>好委派</h4>
+      <p><code>在 20:00–20:10 的 order-service 日志中，找出连接池耗尽的直接证据；只返回 3 条带时间戳的日志与错误码。不要提出修复动作；父级已决定暂不重启。</code></p>
+      <ul>
+        <li>范围、输出、边界、已知决策齐全</li>
+        <li>返回可被 schema 校验</li>
+        <li>父级可以据此审计证据</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>一份可执行的委派契约至少包含七项：</p>
+
+  <table>
+    <thead><tr><th>字段</th><th>回答的问题</th></tr></thead>
+    <tbody>
+      <tr><td><code>objective</code></td><td>这次调查要回答什么？一句话。</td></tr>
+      <tr><td><code>inputs</code></td><td>允许读哪些数据、文件、日志窗口、事故 ID？</td></tr>
+      <tr><td><code>must_consider</code></td><td>父级已确认的约束与决策是什么？不要重新推翻。</td></tr>
+      <tr><td><code>tools</code></td><td>只给完成这件事所需的最小工具集。</td></tr>
+      <tr><td><code>output_schema</code></td><td>返回 <code>{finding, evidence[], confidence, open_questions[]}</code>。</td></tr>
+      <tr><td><code>budget</code></td><td>max_steps / max_tokens / deadline。</td></tr>
+      <tr><td><code>stop</code></td><td>什么条件下必须停下并返回 partial？</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    失败模式可以按 MAST（Multi-Agent System Failure Taxonomy）来系统检查。
+    这项研究标注了 1,600+ 条轨迹、7 个框架，归纳出 14 种失败模式，分属三类：
+    <strong>system design</strong>、<strong>inter-agent misalignment</strong>、
+    <strong>task verification</strong>。
+    <a href="https://arxiv.org/abs/2503.13657">Why Do Multi-Agent LLM Systems Fail?</a>
+  </p>
+
+  <table>
+    <thead><tr><th>失败模式</th><th>表现</th><th>工程对策</th></tr></thead>
+    <tbody>
+      <tr><td>委派含糊</td><td>两个 worker 查同一件事，另一条线没人查</td><td>契约 + task key 去重 + 计划清单</td></tr>
+      <tr><td>上下文缺失</td><td>worker 不知道父级已排除的方案，提出冲突建议</td><td>把已确认约束写进 <code>must_consider</code>；强耦合任务改单 Agent/handoff</td></tr>
+      <tr><td>过度拆分</td><td>简单问题起 10 个 agent，token 与延迟爆炸</td><td>单 Agent 基线 + 每条拆分对应一条可测收益</td></tr>
+      <tr><td>无限往返</td><td>agent 之间 handoff 不停，或 supervisor 反复重试</td><td>max_handoffs / max_steps / 失败两次即降级</td></tr>
+      <tr><td>验证缺口</td><td>lead 直接相信 worker 的结论，没有证据</td><td>worker 必须返回 evidence + confidence；lead 做引用检查</td></tr>
+      <tr><td>历史损坏</td><td>handoff 后消息角色 / tool_call 配对错乱</td><td>显式过滤历史；保留触发 handoff 的 AIMessage + ToolMessage</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <span class="label">Anthropic 的翻车记录</span>
+    <p>
+      早期系统曾为简单查询创建 50 个 subagent、为不存在的来源无限搜索、
+      subagent 之间重复工作；还有 subagent 偏好 SEO 内容农场而不是高信任来源。
+      这些不是模型“笨”，而是委派、工具描述与验证设计的问题。多 Agent 把这些问题放大了 15 倍。
+    </p>
+  </div>
+
+  <h3>预算与去重</h3>
+
+  <ul>
+    <li><strong>Agent 数：</strong>从 3–5 开始，不超过任务需要的领域数。Anthropic 的复杂研究场景也常用 3–5 个并行 subagent。</li>
+    <li><strong>每个 worker：</strong>有独立的 max_steps / max_tokens；失败两次即停止，返回 partial。</li>
+    <li><strong>整个 run：</strong>有总 token、deadline 与 max_handoffs；超限时返回“已覆盖什么、还缺什么”。</li>
+    <li><strong>去重：</strong>任务带稳定 key（如 <code>logs:incident-42:20:00-20:10</code>），已执行 key 写入 run state，避免并行 worker 重复调查。</li>
+    <li><strong>验证：</strong>worker 的返回值必须包含证据与置信度；lead 在汇总时做一次引用检查，而不是直接复述。</li>
+  </ul>
+
+  <h2 id="eval"><span class="num">06</span>评测：和单 Agent 基线比<a class="anchor" href="#eval">¶</a></h2>
+
+  <p>
+    多 Agent 的评测不能只看最终答案。你要回答的是“这次拆分买到了什么”，
+    所以至少要同时看结果、轨迹与成本：
+  </p>
+
+  <table>
+    <thead><tr><th>指标</th><th>回答的问题</th><th>怎么测</th></tr></thead>
+    <tbody>
+      <tr><td>Task success</td><td>最终答案是否正确、完整？</td><td>20 例起；rubric 或 LLM judge + 人工抽检</td></tr>
+      <tr><td>Evidence coverage</td><td>该找的证据是否都找到了？</td><td>期望证据清单 / 实际引用；按 agent 分域统计</td></tr>
+      <tr><td>Token / cost</td><td>多花的 token 买到了什么？</td><td>按 run 记账：lead + worker + 重试 + 汇总</td></tr>
+      <tr><td>Tool efficiency</td><td>有没有重复调用、无效调用？</td><td>tool_calls / task；重复 task key 比例</td></tr>
+      <tr><td>Latency</td><td>并行是否真的降低了墙钟时间？</td><td>p50 / p95；区分串行与并行</td></tr>
+      <tr><td>Coordination</td><td>委派是否准确？handoff 是否必要？</td><td>轨迹规则：agent 选择、handoff 次数、遗漏任务</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Anthropic 的做法值得抄：先用约 20 条真实问题起步，定义一个覆盖事实准确性、引用准确性、
+    完整性、来源质量与工具效率的 rubric；用一个 0–1 分加 pass/fail 的 LLM judge，
+    再保留人工审查来处理异常与来源偏差。对会改变外部状态的 Agent，评测最终状态或离散检查点，
+    而不是要求一条固定的轨迹。
+  </p>
+
+  <div class="callout warn">
+    <span class="label">先有基线，再谈架构</span>
+    <p>
+      没有单 Agent 基线的多 Agent 评测，只能证明“它能跑”，不能证明“它更好”。
+      正确顺序是：同一评测集 → 单 Agent → 加一个 specialist → 对比成功、证据覆盖、token、延迟；
+      没有可测收益就回退。这条规则能帮你挡掉 80% 的“为了多 Agent 而多 Agent”。
+    </p>
+  </div>
+
+  <h2 id="quiz"><span class="num">07</span>检验一下<a class="anchor" href="#quiz">¶</a></h2>
+
+  <p class="small">先自己想，再点选项。答错会给出解释。</p>
+
+  <div class="quiz" data-quiz>
+    <div class="quiz-q" data-answer="c" data-explain="Supervisor 保持控制权：它分派任务、接收 worker 的摘要与证据，再自己汇总回答。Handoff 才是把控制权交给 specialist，让 specialist 直接面对用户或继续转交。">
+      <p class="quiz-prompt">supervisor 与 handoff 的关键区别是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>supervisor 让子 Agent 直接回复用户</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>handoff 让主 Agent 汇总所有结果</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>supervisor 保留控制权并接收摘要</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>handoff 不共享任何对话历史</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="d" data-explain="Anthropic 的工程复盘给出的量级是：普通 chat 约 1× token，单个 Agent 约 4×，多 Agent 系统约 15×。多 Agent 不是更省 token，而是把 token 从主上下文移到 worker 的独立上下文。">
+      <p class="quiz-prompt">Anthropic 观察到的多 Agent token 量级是？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>约为普通 chat 的 2 倍</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>约为普通 chat 的 4 倍</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>约为普通 chat 的 8 倍</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>约为普通 chat 的 15 倍</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="Cognition 的核心论点是：动作携带隐含决策；子 Agent 看不到彼此的动作，就会产生互相冲突的假设。Flappy Bird 例子里，一个 Agent 画了马里奥风格背景，另一个画了不匹配的小鸟，拼接后风格撕裂。">
+      <p class="quiz-prompt">Cognition 反对多 Agent 的核心理由是？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>多 Agent 无法调用外部工具</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>子 Agent 看不到彼此决策</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>多 Agent 不能并行执行任务</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>单 Agent 的上下文无限大</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="a" data-explain="Handoff 适合有状态、需要 specialist 直接和用户多轮对话的流程。需要独立并行、只返回摘要的子任务，应该用 supervisor / subagent；一次深度调查也只需一个 subagent。">
+      <p class="quiz-prompt">什么时候应该用 handoff 而不是 supervisor？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>specialist 需要直接面对用户</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>子任务可独立并行返回摘要</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>只需要一次深度调查任务</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>任务之间完全无状态依赖</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="c" data-explain="拆分的正当依据是上下文压力、工具/权限隔离、可并行、可验收等工程收益。按“planner / researcher / writer”组织架构拆，是角色扮演，不是架构；它通常只会增加委派与协调成本。">
+      <p class="quiz-prompt">下面哪一项不是拆多 Agent 的正当理由？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>主上下文已经超出窗口</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>工具与权限需要隔离</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>想让架构图更像组织架构</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>子任务可以并行调查</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="Worker 应该返回精简结论、证据、置信度与未解决问题；完整原始日志与思考过程留在它自己的上下文里。没有证据，lead 无法验证；返回布尔值，lead 无法汇总。">
+      <p class="quiz-prompt">worker 返回给 supervisor 的最佳内容是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>完整原始日志与思考过程</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>精简结论、证据与置信度</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>只返回一个布尔值</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>让 supervisor 重新跑一遍</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-score" aria-live="polite"></div>
+  </div>
+
+  <h2 id="lab"><span class="num">08</span>Lab：同一张任务，三种拓扑<a class="anchor" href="#lab">¶</a></h2>
+
+  <p>
+    代码在 <a href="../labs/0010-multi-agent/">labs/0010-multi-agent/</a>。
+    Lab 把 RepoMedic 的“日志 / 代码 / runbook”三个证据域做成确定性 fixture，
+    用同一组场景跑三种拓扑：单 Agent、supervisor、handoff。
+    模型决策是脚本化的，所以唯一变量是架构；所有测试离线。
+  </p>
+
+  <h3>Step 0 · 建环境（5 分钟）</h3>
+  <pre><code>cd labs/0010-multi-agent
+python3 --version
+
+# 低于 3.10 时，二选一：
+python3.12 -m venv .venv
+# 或：uv venv --python 3.12 .venv
+
+. .venv/bin/activate
+pip install -r requirements.txt</code></pre>
+
+  <h3>Step 1 · 跑离线测试（5 分钟）</h3>
+  <pre><code>python3 -m unittest test_multi_agent -v</code></pre>
+  <p>
+    15 个测试覆盖：worker 上下文隔离、worker 工具失败后降级、supervisor 单域/多域委派、
+    预算终止、单 Agent 丢弃超大观察、breadth 场景的覆盖/成本权衡、
+    handoff 控制转移与共享历史、handoff 链与 partial 结果。
+  </p>
+
+  <h3>Step 2 · 跑三种拓扑的对照表（10 分钟）</h3>
+  <pre><code>python3 multi_agent.py eval</code></pre>
+  <p>
+    关注四列：<code>tokens</code>、<code>coverage</code>、<code>stop</code>、<code>dropped</code>。
+    在 <code>simple</code> 场景，单 Agent 更便宜；在 <code>breadth</code> 场景，
+    单 Agent 因上下文上限丢弃了日志观察，覆盖下降，而 supervisor 用更高 token 换到了完整覆盖。
+    本机参考值：简单任务 835 vs 1304 token；breadth 场景 6943 / 0.67 vs 7876 / 1.00。
+    这就是本课的交易：<strong>用总 token 买主上下文的注意力</strong>。
+  </p>
+
+  <h3>Step 3 · 看 supervisor 如何委派（10 分钟）</h3>
+  <pre><code>python3 multi_agent.py demo --pattern supervisor --scenario breadth
+python3 multi_agent.py trace  --pattern supervisor --scenario breadth</code></pre>
+  <p>
+    在 trace 里找三个字段：<code>worker_context_keys</code>（worker 只看到自己的
+    <code>agent / task / scenario</code>，没有父级 <code>findings</code> 与 <code>question</code>）、
+    <code>saw_other_findings</code>（supervisor 每轮看到多少条已有摘要）、
+    <code>worker_saw_parent_findings</code>（应为 <code>false</code>）。
+    这是“上下文隔离”在代码里的样子。
+  </p>
+
+  <h3>Step 4 · 看 handoff 如何转移控制（10 分钟）</h3>
+  <pre><code>python3 multi_agent.py demo  --pattern handoff --scenario breadth
+python3 multi_agent.py trace --pattern handoff --scenario breadth</code></pre>
+  <p>
+    Handoff 的 trace 会显示 <code>triage → logs_agent → code_agent → runbook_agent → done</code>；
+    每个 specialist 的 <code>saw_history_len</code> 与 <code>saw_prior_findings</code> 都大于 0，
+    说明它看到的是共享会话，而不是干净窗口。对比 supervisor 的 worker：
+    同样是 specialist，控制权与上下文边界完全不同。
+  </p>
+
+  <h3>Step 5 · 注入失败（10 分钟）</h3>
+  <pre><code>python3 multi_agent.py demo  --pattern supervisor --scenario retry
+python3 multi_agent.py demo  --pattern supervisor --scenario dead_tool
+python3 multi_agent.py demo  --pattern handoff    --scenario dead_tool</code></pre>
+  <p>
+    <code>retry</code> 场景里，日志工具第一次失败，worker 自动降级到健康指标；
+    <code>dead_tool</code> 场景里，日志工具彻底不可用，supervisor 与 handoff 都返回 partial，
+    并在答案里明确标注缺失的证据域。注意：partial 不是失败，而是<strong>诚实的停止条件</strong>。
+  </p>
+
+  <h3>Step 6 · 选做：换一个委派契约（10 分钟）</h3>
+  <p>
+    打开 <code>multi_agent.py</code>，把 <code>QUERIES["logs"]</code> 改成一句模糊的
+    “查一下日志”，再跑 <code>eval</code>。观察 worker 的 <code>task</code> 与最终
+    <code>coverage</code> 是否发生变化。这个实验没有真实模型，所以不会自动变差；
+    它只是让你看到契约字段在代码里的位置。接真实模型时，模糊契约会直接体现在
+    worker 的搜索范围与返回质量上。
+  </p>
+
+  <h3>成功标准</h3>
+  <ul class="checklist" data-persist="lesson10-lab">
+    <li><label><input type="checkbox"><span>测试全绿，能解释 worker 为什么看不到父级 findings</span></label></li>
+    <li><label><input type="checkbox"><span>能说出 supervisor 与 handoff 在控制权、上下文上的两个差别</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 breadth 场景里单 Agent 的 <code>dropped</code> 与 coverage 下降</span></label></li>
+    <li><label><input type="checkbox"><span>能说清多 Agent 为什么总 token 更高，却仍可能值得</span></label></li>
+    <li><label><input type="checkbox"><span>能写出一个包含 objective / inputs / must_consider / output_schema / budget 的委派契约</span></label></li>
+    <li><label><input type="checkbox"><span>能根据 trace 判断失败出在委派、worker 还是汇总</span></label></li>
+  </ul>
+
+  <h2 id="java"><span class="num">09</span>和 Java 后端对照<a class="anchor" href="#java">¶</a></h2>
+
+  <table>
+    <thead><tr><th>Agent 概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>Supervisor</td><td>Orchestrator / Facade / API Gateway：编排多个领域服务，自己不持有全部数据</td></tr>
+      <tr><td>Sub-agent worker</td><td>有界上下文的领域服务调用；输入输出是 DTO，不是共享内存</td></tr>
+      <tr><td>委派契约</td><td>接口契约 + 请求/响应 schema + SLA + 幂等键</td></tr>
+      <tr><td>上下文隔离</td><td>不共享可变状态，只通过消息/事件传递已确认的事实</td></tr>
+      <tr><td>Handoff</td><td>状态机转移 / 工作流任务改派：<code>active_agent</code> 就是当前状态</td></tr>
+      <tr><td>Context filtering</td><td>出站消息裁剪 / 事件投影：只发接收方需要的事实</td></tr>
+      <tr><td>Task key 去重</td><td>幂等键 / 去重表 / 唯一约束</td></tr>
+      <tr><td>Budget & stop</td><td>超时、重试上限、熔断、deadline budget</td></tr>
+      <tr><td>Trace</td><td>分布式追踪：parent span + worker span + 委派参数 + 返回摘要</td></tr>
+      <tr><td>MAST</td><td>故障分类法 / postmortem 模板：按系统设计、协作、验证三层归因</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    最大的认知转变是：<strong>多 Agent 不是“把服务拆小”，而是“把上下文拆小”。</strong>
+    微服务拆分的目标是团队自治与独立部署；Agent 拆分的目标是让每个模型调用只看到它需要的证据。
+    如果你的拆分没有缩小任何一次模型调用的上下文，也没有隔离工具/权限，那它只是多了几层 RPC。
+  </p>
+
+  <div class="source-card">
+    <div class="label">本课精读</div>
+    <h3>Anthropic — How We Built Our Multi-Agent Research System</h3>
+    <p>
+      先读 <em>When multi-agent systems work</em>、<em>Architecture</em>、
+      <em>Failure modes</em> 与 <em>Evaluation</em> 四节（约 20 分钟），
+      重点记三个数字：90.2%、~15× token、80% 方差。然后读
+      <a href="https://cognition.com/blog/dont-build-multi-agents">Cognition — Don't Build Multi-Agents</a>
+      全文（约 10 分钟），带着反方观点回答：Anthropic 的哪些场景不满足 Cognition 的两条原则？
+    </p>
+    <p>
+      <a href="https://www.anthropic.com/engineering/multi-agent-research-system">anthropic.com/engineering/multi-agent-research-system</a><br>
+      <a href="https://cognition.com/blog/dont-build-multi-agents">cognition.com/blog/dont-build-multi-agents</a>
+    </p>
+    <p class="small">
+      选读：<a href="https://docs.langchain.com/oss/python/langchain/multi-agent">LangChain — Multi-agent</a> ·
+      <a href="https://docs.langchain.com/oss/python/langchain/multi-agent/subagents">Subagents</a> ·
+      <a href="https://docs.langchain.com/oss/python/langchain/multi-agent/handoffs">Handoffs</a> ·
+      <a href="https://openai.github.io/openai-agents-python/handoffs/">OpenAI Agents SDK — Handoffs</a> ·
+      <a href="https://arxiv.org/abs/2503.13657">Why Do Multi-Agent LLM Systems Fail?</a>
+    </p>
+  </div>
+
+  <p class="small center no-print">
+    打印版：<a href="../reference/multi-agent-checklist.html">多 Agent 决策清单</a> ·
+    设计 supervisor / handoff 时逐项过一遍。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">卡住了？</span>
+    <p>
+      回到终端问你的老师：“lesson 0010 里，supervisor 的 worker 为什么看不到父级 findings，
+      而 handoff 的 specialist 能看到 history？” 或者把
+      <code>python3 multi_agent.py trace --pattern supervisor --scenario breadth</code>
+      的输出贴过来，我们一起看委派契约、上下文隔离与汇总发生在哪一步。
+    </p>
+  </div>
+
+  <p class="small center no-print" style="margin-top:2.2rem;">
+    下一课：MCP——把工具从“某个框架的函数”变成“任何客户端都能发现的协议”。
+    Server/client、工具暴露、权限与传输方式。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="0009-langgraph-durability.html">← 第 9 课：可恢复的 Agent</a>
+    <a href="../reference/course-roadmap.html">课程路线图</a>
+    <a href="../reference/glossary.html">术语表</a>
+    <span class="next disabled">第 11 课：MCP（即将解锁）</span>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

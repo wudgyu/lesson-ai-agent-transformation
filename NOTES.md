@@ -45,13 +45,15 @@
 - 2026-10-31：Lesson 0008《LangGraph I：把循环画成图》交付（含 `labs/0008-langgraph-basics`：StateGraph、reducer、条件边、预算终止、13 个离线测试；新增 `reference/langgraph-checklist.html`）。当前 LangGraph 1.2.x 要求 Python >= 3.10，lab 需用 3.12 建 venv；旧 lab 仍兼容 3.9。已在 Python 3.12.16 + LangGraph 1.2.19 上跑通全部测试。
 - 2026-11-04：Lesson 0009《LangGraph II：可恢复的 Agent》交付（含 `labs/0009-langgraph-durability`：SQLite checkpointer、interrupt/Command 审批流、durability=sync、stream_mode updates/custom、崩溃恢复与幂等台账、9 个离线测试；新增 `reference/langgraph-durability-checklist.html`）。已在 Python 3.12.16 + LangGraph 1.2.19 + langgraph-checkpoint-sqlite 3.1.3 上跑通全部测试与 CLI 流程。核心观察：checkpoint 在 super-step 边界写；resume 时已完成节点不重跑、未完成节点整段重跑；checkpoint 不是外部副作用的事务边界，写操作必须带幂等键；resume 会重放 interrupt 前的 stream 事件，消费者需去重。
 - 2026-11-04：为 Lesson 0009 增补 **选修 PostgresSaver**：`postgres_demo.py`（init/start/resume/continue/reset/stats）、`test_postgres_optional.py`（5 个测试，未设置 `TEST_POSTGRES_URL` 时自动 skip）、`docker-compose.yml`（固定 `postgres:16.1`）、`requirements-postgres.txt`；README、课时页、持久化清单、RESOURCES 已同步。已用嵌入式 PostgreSQL 16.2 跑通 5 个 Postgres 测试与全部 CLI 流程；连接池（`ConnectionPool`）与 `setup()` 已单独验证。
-- 尚未获得 lab 1–9 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
+- 2026-11-10：Lesson 0010《多 Agent：拆角色，还是拆上下文？》交付（含 `labs/0010-multi-agent`：确定性 fixtures、supervisor / handoff / single 三拓扑、15 个离线测试；新增 `reference/multi-agent-checklist.html`）。已在 Python 3.12.16 + LangGraph 1.2.19 上跑通全部测试与 CLI。核心观察：simple 场景单 Agent 835 token、supervisor 1304；breadth 场景单 Agent 6943 token / coverage 0.67（`dropped=logs`），supervisor 7876 / 1.00。多 Agent 不省总 token，买的是主上下文注意力、并行与权限隔离。
+- 尚未获得 lab 1–10 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
 - 第 1 课的核心观察：模型只输出 tool_calls，不执行；temperature=0 不保证绝对确定；结构化输出必须 schema + 校验 + 修复循环。
 - 第 2 课的核心观察：baseline prompt 23 token，exact 0.500、schema 0.800；engineered prompt 339 token，exact 1.000、schema 1.000。上下文工程的交易是“用预算买确定性”，不是越长越好。
 - 第 5 课的核心观察：离线 `vector(lexical)` 只是词面向量，不能证明语义检索的收益；真实结论要等用户配置 embedding 后跑 dense/hybrid。
 - 第 6 课的核心观察：`fixtures` 只验证 checker，不代表模型能力；真实答案级结论必须跑 `--backend llm`。A09 是 quote containment 的盲区，需要 NLI / LLM judge / 人工审计。
 - 第 7 课的核心观察：`none`（硬截断）能答对最终问题但丢掉最初约束；compaction 能保住约束，但默认 0.70/keep4 会压缩 8 次（thrash），调到 0.90/keep2 后只压 2 次、峰值上升但最终 tokens 更低。长期记忆改变第一个工具（health → runbook）；旧记忆 40 被新证据 50 supersede；resume 后副作用不重复。
 - 第 8 课的核心观察：StateGraph 不替你调用模型或执行工具，只调度；节点返回增量，默认通道是 LastValue（列表会被整体替换）；`rounds` 漏掉 `operator.add` 会让预算永不触发；`max_rounds` 是应用预算，`recursion_limit` 只是框架兜底；未执行的 tool_call 也要补 `SKIPPED` ToolMessage，否则消息协议不完整。
+- 第 10 课的核心观察：supervisor 与 handoff 的区别是控制权是否转移，不是 agent 数量；supervisor 的 worker 拿干净上下文、只回摘要，handoff 的 specialist 看共享历史；多 Agent 总 token 更高，收益是主上下文更小、并行与权限隔离；拆分前提是子任务可独立决策且可用 schema 验收，否则应单 Agent 或 handoff。
 - 已补 D1/D2 作为 Lesson 0001/0002，并把原 L1–L5 顺延为 L3–L8；roadmap、labs、glossary 与所有交叉链接已同步。
 
 ## 待确认
