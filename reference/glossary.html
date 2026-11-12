@@ -57,11 +57,12 @@
   </p>
 
   <div class="callout note">
-    <span class="label">四个最容易混淆的区别</span>
+    <span class="label">五个最容易混淆的区别</span>
     <p><strong>Agent vs Workflow：</strong>控制流由谁决定。代码写死的是 workflow；模型每步自己决定的是 agent。</p>
     <p><strong>Tool calling vs Agent：</strong>工具调用只是一次能力扩展；Agent 是在循环里根据观察反复决定下一步。</p>
     <p><strong>RAG vs Memory：</strong>RAG 检索外部知识；Memory 保存这次/历次交互的状态与经验。两者都进上下文，但来源与生命周期不同。</p>
     <p><strong>Supervisor vs Handoff：</strong>控制权是否转移。Supervisor 保持控制、接收摘要；Handoff 把控制权交给 specialist，通常共享会话历史。</p>
+    <p><strong>MCP vs Function calling：</strong>MCP 是工具提供方与消费方之间的协议；function calling 是模型输出“调用哪个工具”的格式。二者常串联，不互相替代。</p>
   </div>
 
   <div class="glossary-group">
@@ -180,7 +181,18 @@
         <tr id="term-orchestrator-worker"><td>编排者-工作者<span class="en">orchestrator-worker</span></td><td>Anthropic 对 supervisor 模式的称呼：lead 规划并分派，worker 在独立上下文里执行，返回精简结论；lead 决定是否追加 worker。</td><td>W2 D11</td></tr>
         <tr id="term-router"><td>路由器<span class="en">router</span></td><td>无状态分类器：把请求路由给一个或多个 specialist，再合并输出。它不做多跳委派，也不维护对话状态。</td><td>W2 D11</td></tr>
         <tr id="term-mast"><td>MAST</td><td>Multi-Agent System Failure Taxonomy：14 种失败模式，分属系统设计、agent 间错位、任务验证三类；用于系统化诊断多 Agent 失败。</td><td>W2 D11 · W3</td></tr>
-        <tr id="term-mcp"><td>MCP</td><td>Model Context Protocol：把工具、资源、提示词以标准协议暴露给任意 Agent 客户端。2026-07 版本转向无状态核心。</td><td>W2 D12</td></tr>
+        <tr id="term-mcp"><td>MCP</td><td>Model Context Protocol：基于 JSON-RPC 的开放协议，让 host 通过 1:1 client 发现并调用 server 的 tools、resources、prompts。2026-07-28 起为无状态核心。</td><td>W2 D12</td></tr>
+        <tr id="term-json-rpc"><td>JSON-RPC 2.0<span class="en">JSON-RPC</span></td><td>用 JSON 消息表示请求、响应与通知的远程调用格式。MCP 用它承载 server/discover、tools/list、tools/call 等方法。</td><td>W2 D12</td></tr>
+        <tr id="term-mcp-host"><td>MCP host</td><td>用户面对的应用程序：创建并管理多个 client，执行权限、同意与上下文聚合。Host 是安全策略的真正执行者。</td><td>W2 D12</td></tr>
+        <tr id="term-mcp-client"><td>MCP client</td><td>Host 内与一个 server 一对一连接的协议端点；负责路由消息、管理订阅、维护 server 之间的安全边界。</td><td>W2 D12</td></tr>
+        <tr id="term-mcp-server"><td>MCP server</td><td>暴露 tools、resources、prompts 的本地进程或远程服务；只看到发给自己的请求，不拥有整段对话。</td><td>W2 D12</td></tr>
+        <tr id="term-mcp-tool"><td>MCP tool</td><td>Model-controlled 的能力：有 name、description、inputSchema、可选 outputSchema 与 annotations；通过 tools/list 发现、tools/call 调用。</td><td>W2 D12</td></tr>
+        <tr id="term-mcp-resource"><td>MCP resource</td><td>Application-driven 的可寻址数据，用 URI 标识；通过 resources/list 与 resources/read 访问，适合文档、代码、配置。</td><td>W2 D12</td></tr>
+        <tr id="term-mcp-prompt"><td>MCP prompt</td><td>User-controlled 的模板：通过 prompts/list 发现、prompts/get 渲染；参数是字符串，是否使用由用户决定。</td><td>W2 D12</td></tr>
+        <tr id="term-mcp-transport"><td>MCP transport</td><td>stdio（本地子进程，JSON-RPC 走 stdin/stdout）或 Streamable HTTP（远程，POST /mcp）；HTTP+SSE 已弃用。</td><td>W2 D12</td></tr>
+        <tr id="term-server-discover"><td>server/discover</td><td>2026-07-28 中 server 必须实现的 RPC：返回支持的协议版本、capabilities 与身份；client 可用它做版本选择或兼容探测。</td><td>W2 D12</td></tr>
+        <tr id="term-stateless-protocol"><td>无状态协议<span class="en">stateless protocol</span></td><td>每个请求自带协议版本、客户端信息与能力（<code>_meta</code>），不依赖连接或 session；跨调用状态用显式 handle。</td><td>W2 D12</td></tr>
+        <tr id="term-tool-poisoning"><td>工具投毒<span class="en">tool poisoning</span></td><td>把恶意指令写进工具描述、schema 或结果，诱导模型偏离任务或调用危险工具；缓解是可信 server 注册、投影、审批与描述审计。</td><td>W2 D12</td></tr>
         <tr id="term-sandbox"><td>沙箱<span class="en">sandbox</span></td><td>限制工具可访问的文件、网络、进程与权限的隔离环境。执行模型生成的代码或命令时必须使用。</td><td>W3 D18</td></tr>
       </tbody>
     </table>

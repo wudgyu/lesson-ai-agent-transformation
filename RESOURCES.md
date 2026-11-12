@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-11-10。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-11-12。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -177,8 +177,30 @@
   `add_messages` 的精确语义：新 id 追加、同 id 更新、字典反序列化。第 8 课 lab 的 messages 通道依据。
 - [PyPI — langgraph](https://pypi.org/project/langgraph/)
   版本、`requires_python` 与依赖。2026-10 核验：1.2.19 要求 Python >= 3.10；第 8 课 lab 因此需要 3.10+ 环境。
-- [Model Context Protocol — 2026-07-28 规范](https://modelcontextprotocol.io/specification/2026-07-28/changelog)
-  最新 MCP：无状态核心、`server/discover`、extensions、OAuth 加固。第 2 周精读 changelog。
+- [Model Context Protocol — 2026-07-28 规范：Key Changes](https://modelcontextprotocol.io/specification/2026-07-28/changelog)
+  **第 11 课精读（前半）**。无状态核心：移除 `initialize`/session、每次请求 `_meta`、`server/discover`、MRTR、`subscriptions/listen`、移除 SSE 重放、tasks 变扩展、Roots/Sampling/Logging 弃用。
+- [MCP — Architecture](https://modelcontextprotocol.io/specification/2026-07-28/architecture)
+  **第 11 课精读**。Host / client / server 的 1:1 关系、能力协商、server 不拥有整段对话的设计原则。
+- [MCP — Server / Tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)
+  **第 11 课精读（后半）**。`tools/list`、`tools/call`、`inputSchema`/`outputSchema`、`structuredContent`、annotations、协议错误 vs 工具执行错误、安全注意事项。
+- [MCP — Server / Resources](https://modelcontextprotocol.io/specification/2026-07-28/server/resources)
+  Application-driven 资源、URI 模板、`resources/read`、annotations、资源不存在错误码。
+- [MCP — Server / Prompts](https://modelcontextprotocol.io/specification/2026-07-28/server/prompts)
+  User-controlled 模板、`prompts/list` / `prompts/get`、参数与嵌入资源。
+- [MCP — Security Best Practices](https://modelcontextprotocol.io/specification/2026-07-28/basic/security_best_practices)
+  **第 11 课精读（安全）**。Confused deputy、token passthrough、SSRF、state handle hijacking、本地 server 妥协、scope 最小化。
+- [MCP Python SDK v2 — What's new](https://py.sdk.modelcontextprotocol.io/whats-new/)
+  `MCPServer`（原 FastMCP）、统一 `Client`、内存/stdio/HTTP 传输、`ToolError`、迁移要点。
+- [MCP Python SDK — Tools](https://py.sdk.modelcontextprotocol.io/servers/tools/index.md)
+  `@mcp.tool`、类型注解生成 schema、结构化返回、注解与校验。第 11 课 lab 的 API 依据。
+- [MCP Python SDK — Client](https://py.sdk.modelcontextprotocol.io/client/)
+  `Client` 生命周期、`list_tools` / `call_tool`、资源与 prompt、stdio 参数、错误语义。
+- [MCP Python SDK — Testing](https://py.sdk.modelcontextprotocol.io/get-started/testing/index.md)
+  `Client(mcp)` 内存测试、pytest + anyio 模式、`raise_exceptions=True`。
+- [PyPI — mcp](https://pypi.org/project/mcp/)
+  2026-11 核验：2.3.x，要求 Python ≥ 3.10；第 11 课 lab 的依赖。
+- [Anthropic — Donating MCP to the Agentic AI Foundation](https://www.anthropic.com/news/donating-the-model-context-protocol-and-establishing-of-the-agentic-ai-foundation)
+  2025-12-09 捐赠给 Linux Foundation 下的 AAIF；AAIF 由 Anthropic、OpenAI、Block 共同发起，Google/Microsoft/AWS 等为成员。
 - [MCP — Getting Started](https://modelcontextprotocol.io/docs/getting-started/intro)
   快速搭建 server/client 的官方入口。
 

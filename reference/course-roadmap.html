@@ -257,7 +257,7 @@
         <tr><td>D9</td><td><a href="../lessons/0008-langgraph-basics.html">LangGraph I：StateGraph、reducer、条件边</a></td><td>讲 + lab</td><td>用图重建 mini-agent</td></tr>
         <tr><td>D10</td><td><a href="../lessons/0009-langgraph-durability.html">LangGraph II：checkpoint、interrupt、流式（含 Postgres 选修）</a></td><td>讲 + lab</td><td>可恢复、可中断的 Agent</td></tr>
         <tr><td>D11</td><td><a href="../lessons/0010-multi-agent.html">多 Agent 模式：supervisor、handoff、sub-agent</a></td><td>讲 + lab</td><td>三种拓扑对照 + 成本/覆盖报告</td></tr>
-        <tr><td>D12</td><td>MCP：协议、server/client、工具暴露</td><td>讲 + lab</td><td>自建 MCP Server</td></tr>
+        <tr><td>D12</td><td><a href="../lessons/0011-mcp.html">MCP：协议、server/client、工具暴露</a></td><td>讲 + lab</td><td>自建 MCP Server + 客户端策略</td></tr>
         <tr><td>D13</td><td>Human-in-the-loop 与 durable execution</td><td>讲 + lab</td><td>审批流 + 断点恢复</td></tr>
         <tr><td>D14</td><td>周项目：带记忆、HITL、MCP 的 agent-v2</td><td>做 + 讲</td><td>agent-v2 + 20 例评测</td></tr>
       </tbody>
@@ -269,6 +269,7 @@
       <li>在进程崩溃后从 checkpoint 恢复任务，不重复执行有副作用的工具。</li>
       <li>设计 state、compaction 与长期记忆策略，并用 token / 保留率 / resume 指标证明它有效。</li>
       <li>判断何时该用多 Agent，何时单 Agent + 好工具更便宜、更可靠。</li>
+      <li>把工具暴露为 MCP server，并在 host 侧做任务级投影、allowlist、审批、幂等与审计。</li>
     </ul>
 
     <div class="deliverable"><strong>交付物：</strong>agent-v2（LangGraph + checkpoint + HITL + 自建 MCP Server + 20 例评测）。</div>
@@ -460,6 +461,8 @@
     &nbsp;·&nbsp;
     <a href="../lessons/0010-multi-agent.html"><strong>→ 第 10 课：多 Agent 模式</strong></a>
     &nbsp;·&nbsp;
+    <a href="../lessons/0011-mcp.html"><strong>→ 第 11 课：MCP</strong></a>
+    &nbsp;·&nbsp;
     <a href="glossary.html">术语表</a>
     &nbsp;·&nbsp;
     <a href="tool-design-checklist.html">工具设计清单</a>
@@ -480,6 +483,8 @@
     &nbsp;·&nbsp;
     <a href="multi-agent-checklist.html">多 Agent 决策清单</a>
     &nbsp;·&nbsp;
+    <a href="mcp-checklist.html">MCP 设计与接入清单</a>
+    &nbsp;·&nbsp;
     <a href="../labs/0001-llm-client/">Lab 1</a>
     &nbsp;·&nbsp;
     <a href="../labs/0002-context-engineering/">Lab 2</a>
@@ -499,6 +504,8 @@
     <a href="../labs/0009-langgraph-durability/">Lab 9</a>
     &nbsp;·&nbsp;
     <a href="../labs/0010-multi-agent/">Lab 10</a>
+    &nbsp;·&nbsp;
+    <a href="../labs/0011-mcp/">Lab 11</a>
   </p>
 
   <div class="source-card">
@@ -515,7 +522,7 @@
   <nav class="footer-nav">
     <a href="../MISSION.md">← 任务说明</a>
     <a href="glossary.html">术语表</a>
-    <a class="next" href="../lessons/0010-multi-agent.html">第 10 课：多 Agent 模式 →</a>
+    <a class="next" href="../lessons/0011-mcp.html">第 11 课：MCP →</a>
   </nav>
 
 </main>
