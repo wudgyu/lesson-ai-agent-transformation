@@ -173,9 +173,20 @@
         <tr id="term-durability"><td>持久化级别<span class="en">durability</span></td><td>checkpoint 的写盘时机：sync 下一步前同步写、async 异步写（默认）、exit 只在退出时写。级别越高，崩溃窗口越小。</td><td>W2 L9</td></tr>
         <tr id="term-stream-mode"><td>流模式<span class="en">stream_mode</span></td><td>graph.stream() 的事件粒度：values 快照、updates 节点增量、messages token、custom 业务事件、debug / checkpoints 运行时细节。</td><td>W2 L9</td></tr>
         <tr id="term-time-travel"><td>时间旅行<span class="en">time travel</span></td><td>用 get_state_history 查看旧 checkpoint，用 update_state 从旧点分叉重放。用于调试与复盘，不是生产回滚。</td><td>W2 L9</td></tr>
-        <tr id="term-durable-execution"><td>持久化执行<span class="en">durable execution</span></td><td>进程崩溃或人工暂停后，任务能从上次检查点继续，且不重复执行有副作用的操作。</td><td>W2 L9 · D13</td></tr>
+        <tr id="term-durable-execution"><td>持久化执行<span class="en">durable execution</span></td><td>进程崩溃或人工暂停后，任务能从上次检查点继续，且不重复执行有副作用的操作。</td><td>W2 L9 · L12</td></tr>
         <tr id="term-idempotency"><td>幂等<span class="en">idempotency</span></td><td>同一操作重复执行，效果与执行一次相同。Agent 重试、断点恢复、模型重复调用时，写工具必须幂等。</td><td>W1 L4 · W2 L7 · L9</td></tr>
-        <tr id="term-hitl"><td>人在回路<span class="en">human-in-the-loop</span></td><td>在关键动作前暂停，等待人类批准、修改或补充信息。高风险工具（转账、重启、删除）的默认配置。</td><td>W2 L9 · D13</td></tr>
+        <tr id="term-hitl"><td>人在回路<span class="en">human-in-the-loop</span></td><td>在关键动作前暂停，等待人类批准、修改或补充信息。高风险工具（转账、重启、删除）的默认配置。</td><td>W2 L9 · L12</td></tr>
+        <tr id="term-approval-fatigue"><td>审批疲劳<span class="en">approval fatigue</span></td><td>审批请求过多导致人机械点击通过，gate 退化为橡皮图章。典型信号：通过率接近 100%、中位决策时间只有一两秒。</td><td>W2 L12</td></tr>
+        <tr id="term-automation-bias"><td>自动化偏差<span class="en">automation bias</span></td><td>人过度依赖系统输出、减少独立判断的倾向，在时间压力下更明显。EU AI Act 第 14 条要求在设计上防范。</td><td>W2 L12</td></tr>
+        <tr id="term-approval-request"><td>审批请求<span class="en">approval request</span></td><td>绑定具体动作、证据、风险等级、发起人、有效期与所需批准数的状态对象；不是一条通知，而是可审计的实体。</td><td>W2 L12</td></tr>
+        <tr id="term-approval-card"><td>审批卡<span class="en">approval card</span></td><td>审批请求的呈现形态：动作、目标、证据、后果、回滚、风险、发起人与有效期；决定审批人能否做出判断。</td><td>W2 L12</td></tr>
+        <tr id="term-action-digest"><td>动作指纹<span class="en">action digest</span></td><td>工具名 + 规范化参数 + 发起人 + 任务号的哈希。审批绑定它，执行前重算并比较；防逻辑替换，不是密码学签名。</td><td>W2 L12</td></tr>
+        <tr id="term-four-eyes"><td>双人复核<span class="en">four-eyes</span></td><td>两位不同的、有授权的、非发起人分别批准同一动作。用于资金、不可逆或高影响动作，不等于“同一人点两次”。</td><td>W2 L12</td></tr>
+        <tr id="term-separation-of-duties"><td>职责分离<span class="en">separation of duties</span></td><td>发起人不能批准自己的请求；审批权与执行权分开，降低单点错误与舞弊风险。</td><td>W2 L12</td></tr>
+        <tr id="term-break-glass"><td>紧急通道<span class="en">break-glass</span></td><td>显式绕过常规审批的应急路径：必须记录原因、双人确认或事后复核，并产生高优先级审计；不是隐藏的 --force。</td><td>W2 L12</td></tr>
+        <tr id="term-policy-engine"><td>策略引擎<span class="en">policy engine</span></td><td>按动作实例（工具 + 参数 + 上下文）决定自动/通知/审批/双人复核/拒绝的规则系统；未知动作默认拒绝。</td><td>W2 L12</td></tr>
+        <tr id="term-toctou"><td>检查后使用竞态<span class="en">TOCTOU</span></td><td>Time-of-check to time-of-use：检查时安全，不代表使用时安全。执行前必须重新评估策略、时效与目标状态。</td><td>W2 L12</td></tr>
+        <tr id="term-approval-sla"><td>审批 SLA</td><td>从请求到决定的时间窗口。必须服从事故 SLA；超时默认拒绝，不能让审批窗口把事故处置拖过时限。</td><td>W2 L12</td></tr>
         <tr id="term-handoff"><td>交接<span class="en">handoff</span></td><td>一个 Agent 把<strong>控制权</strong>连同选定上下文交给另一个 Agent；接收方可以直接面对用户，也可以继续转交。与 supervisor 的关键区别是控制权转移。</td><td>W2 D11</td></tr>
         <tr id="term-supervisor"><td>Supervisor</td><td>保持控制权的协调 Agent：把子任务作为受控工具/子图调用，只接收摘要与证据，再自己汇总回答。与 handoff 的关键区别是控制权不转移。</td><td>W2 D11</td></tr>
         <tr id="term-orchestrator-worker"><td>编排者-工作者<span class="en">orchestrator-worker</span></td><td>Anthropic 对 supervisor 模式的称呼：lead 规划并分派，worker 在独立上下文里执行，返回精简结论；lead 决定是否追加 worker。</td><td>W2 D11</td></tr>

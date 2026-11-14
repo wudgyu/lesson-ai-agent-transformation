@@ -31,6 +31,7 @@
 - 项目必须包含：RAG、工具、记忆、HITL、评测、tracing、部署。缺一项就不算“生产级”。
 - Lesson 1 仍以 **Chat Completions** 为教学协议；Responses API 作为官方文档默认形态和后续 Agents SDK 的对照，不替换 lab。2026-10 调研显示国产厂商已普遍支持 Responses，但实现深度不一。
 - Lesson 0011 用官方 **`mcp` Python SDK**（`MCPServer` / `Client`），不引入第三方 FastMCP 独立包；lab 以协议边界与客户端治理为主，不把框架 API 当知识点。
+- Lesson 0012 的 HITL lab 不绑定 LangGraph / OpenAI Agents SDK，用纯标准库实现策略、审批状态机与幂等台账；第 9 课的 interrupt/checkpoint 只作为机制回顾，避免重复教学。这样做的判断是：HITL 的核心是策略、绑定与恢复语义，不是某个框架的 API。
 
 ## 进度
 
@@ -48,7 +49,8 @@
 - 2026-11-04：为 Lesson 0009 增补 **选修 PostgresSaver**：`postgres_demo.py`（init/start/resume/continue/reset/stats）、`test_postgres_optional.py`（5 个测试，未设置 `TEST_POSTGRES_URL` 时自动 skip）、`docker-compose.yml`（固定 `postgres:16.1`）、`requirements-postgres.txt`；README、课时页、持久化清单、RESOURCES 已同步。已用嵌入式 PostgreSQL 16.2 跑通 5 个 Postgres 测试与全部 CLI 流程；连接池（`ConnectionPool`）与 `setup()` 已单独验证。
 - 2026-11-10：Lesson 0010《多 Agent：拆角色，还是拆上下文？》交付（含 `labs/0010-multi-agent`：确定性 fixtures、supervisor / handoff / single 三拓扑、15 个离线测试；新增 `reference/multi-agent-checklist.html`）。已在 Python 3.12.16 + LangGraph 1.2.19 上跑通全部测试与 CLI。核心观察：simple 场景单 Agent 835 token、supervisor 1304；breadth 场景单 Agent 6943 token / coverage 0.67（`dropped=logs`），supervisor 7876 / 1.00。多 Agent 不省总 token，买的是主上下文注意力、并行与权限隔离。
 - 2026-11-12：Lesson 0011《MCP：把工具从函数变成协议》交付（含 `labs/0011-mcp`：RepoMedic MCP server、带策略的 client/gateway、stdio + Streamable HTTP、16 个离线测试；新增 `reference/mcp-checklist.html`）。已在 Python 3.12.16 + `mcp` 2.3.0 上跑通全部测试与 CLI，stdio 与 HTTP 两种传输均验证。核心观察：MCP 2026-07-28 是无状态核心（无 initialize/session，`_meta` 每请求携带版本/能力，`server/discover` 必实现，无 SSE 重放）；发现工具不等于信任工具，host 必须做任务级投影、allowlist、写操作审批、幂等键与输出标记；RepoMedic 4 个工具全量 schema 约 1419 token，triage 投影 3 个后约 992 token；`isError=true` 是工具执行错误，JSON-RPC error 才是协议错误；annotations 只是提示，不能替代 host 策略。
-- 尚未获得 lab 1–11 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
+- 2026-11-14：Lesson 0012《人在回路：审批不是按钮》交付（含 `labs/0012-hitl-policy`：T0–T4 策略分级、审批状态机、action digest 绑定、four-eyes、TTL/默认拒绝、幂等台账、崩溃重试、27 个离线测试；新增 `reference/hitl-checklist.html`）。已在 Python 3.9.25 + 3.12.16 上跑通全部测试与 CLI demo，不依赖第三方包。核心观察：风险等级是动作实例（工具 + 参数）的属性，不是工具名的属性；审批必须绑定 digest + 认证身份 + 时效，并在执行前重新评估策略；审批不等于 exactly-once，effect → consume 的崩溃窗口靠目标系统幂等键吸收；审批疲劳（通过率≈100%、决策 1–2 秒）说明 gate 已退化为橡皮图章。
+- 尚未获得 lab 1–12 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
 - 第 1 课的核心观察：模型只输出 tool_calls，不执行；temperature=0 不保证绝对确定；结构化输出必须 schema + 校验 + 修复循环。
 - 第 2 课的核心观察：baseline prompt 23 token，exact 0.500、schema 0.800；engineered prompt 339 token，exact 1.000、schema 1.000。上下文工程的交易是“用预算买确定性”，不是越长越好。
 - 第 5 课的核心观察：离线 `vector(lexical)` 只是词面向量，不能证明语义检索的收益；真实结论要等用户配置 embedding 后跑 dense/hybrid。
@@ -57,6 +59,7 @@
 - 第 8 课的核心观察：StateGraph 不替你调用模型或执行工具，只调度；节点返回增量，默认通道是 LastValue（列表会被整体替换）；`rounds` 漏掉 `operator.add` 会让预算永不触发；`max_rounds` 是应用预算，`recursion_limit` 只是框架兜底；未执行的 tool_call 也要补 `SKIPPED` ToolMessage，否则消息协议不完整。
 - 第 10 课的核心观察：supervisor 与 handoff 的区别是控制权是否转移，不是 agent 数量；supervisor 的 worker 拿干净上下文、只回摘要，handoff 的 specialist 看共享历史；多 Agent 总 token 更高，收益是主上下文更小、并行与权限隔离；拆分前提是子任务可独立决策且可用 schema 验收，否则应单 Agent 或 handoff。
 - 第 11 课的核心观察：MCP 统一发现/调用/传输，不提供信任与授权；host 要按任务投影工具、默认拒绝写操作、审批后放行、用幂等键吸收重试、把工具输出标记为不可信数据；tools 是 model-controlled，resources 是 application-driven，prompts 是 user-controlled；2026-07-28 无 session，跨调用状态必须显式 handle。
+- 第 12 课的核心观察：审批是决策系统，不是按钮；分级看动作实例（可逆性 × 影响面），请求必须给证据/后果/回滚/时效，授权必须绑定 digest + 认证身份 + 单次消费，执行前要重新评估策略与有效期；“审批 ≠ exactly-once”，effect 先落盘再消费审批，用业务幂等键吸收崩溃重试；HITL 的质量要用通过率、决策延迟、橡皮图章率、过期率与 escaped-action rate 成对评估。
 - 已补 D1/D2 作为 Lesson 0001/0002，并把原 L1–L5 顺延为 L3–L8；roadmap、labs、glossary 与所有交叉链接已同步。
 
 ## 待确认

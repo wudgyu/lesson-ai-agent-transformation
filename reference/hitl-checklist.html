@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HITL 设计与审批清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.85rem 1rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+    break-inside: avoid;
+  }
+  .check-card h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.22rem 0; }
+  .check-grid + h2 { margin-top: 2.4rem; }
+  @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+  .contract {
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--win);
+    border-radius: 0 4px 4px 0;
+    padding: 0.8rem 1rem;
+    margin: 1rem 0 1.4rem;
+    background: var(--win-soft);
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .risk td:first-child { font-weight: 650; white-space: nowrap; }
+  .risk td { font-size: 0.8rem; }
+  .risk .t0 { background: var(--win-soft); }
+  .risk .t1 { background: var(--note-soft); }
+  .risk .t2 { background: var(--warn-soft); }
+  .risk .t3 { background: var(--accent-soft); }
+  .risk .t4 { background: color-mix(in srgb, var(--accent) 18%, var(--paper)); }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>HITL 设计与审批清单</h1>
+  <p class="subtitle">人是最贵的稀缺资源；每一次打断都要买来确定性。</p>
+  <div class="meta">
+    <span>首次建立 2026-11-14</span>
+    <span>配套 Lesson 0012</span>
+    <span>可打印</span>
+  </div>
+
+  <p class="lede">
+    这张清单回答四个问题：什么时候该问人？问的时候给人看什么？
+    “批准”到底授权了什么？没人回答、进程崩溃、参数被换时怎么办？
+    先记住三句话，再按分级、请求、绑定、超时、持久化与指标逐项检查。
+  </p>
+
+  <h2 id="model"><span class="num">01</span>三句话心智模型</h2>
+
+  <div class="formula">
+    <strong>分级决定何时问</strong> · <strong>审批卡决定能不能判断</strong> · <strong>绑定决定授权范围</strong>
+  </div>
+
+  <ol>
+    <li><strong>HITL 不是给每个动作加一个 Approve 按钮。</strong>如果每个动作都要人批，人会开始橡皮图章；确定性的规则交给代码，判断留给人。</li>
+    <li><strong>审批是一个有状态的后端系统。</strong>它有请求、身份、授权、有效期、消费、审计、并发控制与指标；不是一个布尔值。</li>
+    <li><strong>审批不等于恰好一次执行。</strong>它保证“有人授权了这个动作”，不保证副作用只发生一次；后者要靠目标系统的幂等键或对账。</li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="label">最容易犯的错</span>
+    <p>
+      把风险等级绑定在<strong>工具名</strong>上。同一个 <code>restart_service</code>，在 dev 是 T1，
+      在 order-service 是 T2，在 payment-service 是 T3。按工具名分级，等于把参数绕过留给攻击者。
+    </p>
+  </div>
+
+  <h2 id="tiers"><span class="num">02</span>风险分级：可逆性 × 影响面</h2>
+
+  <table class="risk">
+    <thead><tr><th>可逆性 \ 影响面</th><th>单任务 / 只读</th><th>单个服务</th><th>多服务 / 资金 / 合规</th></tr></thead>
+    <tbody>
+      <tr><td>可逆</td><td class="t0"><strong>T0 auto</strong><br>查日志、读指标</td><td class="t1"><strong>T1 notify</strong><br>dev 重启、小扩缩容</td><td class="t2"><strong>T2 approval</strong><br>生产非支付服务重启</td></tr>
+      <tr><td>可逆但需人工恢复</td><td class="t1"><strong>T1 notify</strong><br>灰度回滚</td><td class="t2"><strong>T2 approval</strong><br>生产滚动重启</td><td class="t3"><strong>T3 four-eyes</strong><br>支付链路变更、回滚</td></tr>
+      <tr><td>不可逆</td><td class="t2"><strong>T2 approval</strong><br>删除临时数据</td><td class="t3"><strong>T3 four-eyes</strong><br>删卷、缩到 0</td><td class="t4"><strong>T4 deny</strong><br>改防火墙、改 IAM</td></tr>
+    </tbody>
+  </table>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>T0 / T1：不需要审批的动作</h4>
+      <ul>
+        <li>只读、无外部副作用、可重复执行。</li>
+        <li>非生产环境的可逆写操作；执行后通知值班即可。</li>
+        <li>小规模、可自动回滚的容量调整。</li>
+        <li>仍然要审计：谁、何时、对什么、做了什么。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>T2 / T3：需要审批的动作</h4>
+      <ul>
+        <li>影响生产流量，但可恢复（T2，一人）。</li>
+        <li>不可逆、涉及资金、多服务或合规（T3，两人）。</li>
+        <li>four-eyes：不同的人、有授权、非发起人。</li>
+        <li>审批人必须能看懂证据与后果，否则只是盖章。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>T4：永不经过 Agent 的动作</h4>
+      <ul>
+        <li>改防火墙、改 IAM、drop database 等超出授权范围的动作。</li>
+        <li>没有安全回滚、无法对账的动作。</li>
+        <li>未知工具、缺失参数、无法判定风险的动作。</li>
+        <li>走独立变更流程；不要用“隐藏 flag”绕过。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>多条规则叠加</h4>
+      <ul>
+        <li>按参数分级：env、service、replicas、金额、目标范围。</li>
+        <li>任务级预算：按 <code>task_id</code> 累计次数/金额/影响面。</li>
+        <li>防多步规避：拆成 10 次小额不等于 10 次低风险。</li>
+        <li>策略有版本、有测试、有变更审计；执行时重新评估。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="request"><span class="num">03</span>审批请求清单</h2>
+
+  <div class="contract">坏审批卡
+  Agent requests approval
+  Tool: restart_service
+  [Approve] [Reject]
+
+好审批卡
+  Action    restart_service
+  Target    prod / order-service (3 replicas)
+  Why now   p99 8.2s; pool 49/50; runbook RB-12 step 4
+  Evidence  health.json · logs 20:03–20:08 · RB-12
+  Effect    rolling restart ~90s; traffic retried
+  Rollback  no data loss; previous image retained
+  Risk      T2 · production, reversible with effort
+  Request   agent/repomedic · INC-42
+  Expires   20:25 UTC (15 min) · timeout = reject
+  Raw args  {"service":"order-service","env":"prod"}
+  [Approve] [Reject with reason] [Edit &amp; re-approve]</div>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>必须显示</h4>
+      <ul>
+        <li>精确工具 + 原始参数；不要只给模型摘要。</li>
+        <li>目标服务、环境、副本数/资源范围。</li>
+        <li>为什么现在做：证据链接、runbook、指标。</li>
+        <li>后果预览：会发生什么、不会发生什么、持续多久。</li>
+        <li>可逆性与回滚方式。</li>
+        <li>风险等级与定级依据。</li>
+        <li>发起人、任务/事故号。</li>
+        <li>有效期与超时行为（默认拒绝）。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>决定类型</h4>
+      <ul>
+        <li><strong>Approve</strong>：按原始参数执行。</li>
+        <li><strong>Reject</strong>：不执行，把原因写回 Agent。</li>
+        <li><strong>Edit &amp; re-approve</strong>：改参数后重新过策略、重新算 digest、重新绑定。</li>
+        <li><strong>Ask for evidence</strong>：证据不足时先补，不急着批。</li>
+        <li><strong>Escalate</strong>：转给更有权限或更熟悉的人。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>安全边界</h4>
+      <ul>
+        <li>审批卡只放做决定所需的最小信息。</li>
+        <li>不要在通知/浏览器里暴露完整日志、连接串、隐私数据。</li>
+        <li>浏览器审批只发送不透明 decision ID；完整状态留在服务端。</li>
+        <li>不接受客户端传来的 state、参数或审批记录。</li>
+        <li>审批人通过应用中间件认证与授权。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>找人也是工具调用</h4>
+      <ul>
+        <li><code>request_human_input(question, context, options)</code>。</li>
+        <li>options 包含 urgency、format、choices。</li>
+        <li>追加 <code>human_input_requested</code> 事件，保存线程，跳出循环。</li>
+        <li>人回复后用 thread_id 恢复，追加 <code>response_from_human</code>。</li>
+        <li>适合“该查哪个方向”这类判断，不只是高风险写操作。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="binding"><span class="num">04</span>绑定与授权清单</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>动作绑定</h4>
+      <ul>
+        <li>digest = 工具 + 规范化参数 + 发起人 + 任务号。</li>
+        <li>规范化：键排序、统一空格、稳定数字格式。</li>
+        <li>批准时存 digest；执行时重算并比较。</li>
+        <li>参数被修改 → 拒绝，必要时重新发起审批。</li>
+        <li>digest 是动作指纹，不是密码学签名。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>身份与职责分离</h4>
+      <ul>
+        <li>审批人来自认证后的 session/token，不是自由文本。</li>
+        <li>授权查询 IAM/on-call 组；不是“名字在列表里”。</li>
+        <li>发起人不能批准自己的请求。</li>
+        <li>four-eyes 需要两位不同的、有授权的、非发起人。</li>
+        <li>审批记录包含审批人、时间、备注、决定。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>时效与重校验</h4>
+      <ul>
+        <li>每个请求有 <code>created_at</code> 与 <code>expires_at</code>。</li>
+        <li>执行前重新评估策略；收紧则阻断。</li>
+        <li>执行前重新检查目标状态（TOCTOU）。</li>
+        <li>过期 = 拒绝；需要时用新证据重新发起。</li>
+        <li>长期挂起要带 agent/SDK 版本标记。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>单次消费</h4>
+      <ul>
+        <li>审批是一次性能力，不是可复用布尔值。</li>
+        <li>执行前原子更新 <code>approved → consumed</code>。</li>
+        <li>条件更新返回 0 行 → 不要执行。</li>
+        <li>并发审批用 version 乐观锁，防止丢更新。</li>
+        <li>重放命中幂等键 → 返回已有结果，不产生新副作用。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="timeout"><span class="num">05</span>超时、升级与紧急通道</h2>
+
+  <table>
+    <thead><tr><th>情况</th><th>默认行为</th><th>要记录</th></tr></thead>
+    <tbody>
+      <tr><td>批准</td><td>重新校验后执行；消费审批</td><td>审批人、时间、参数、digest、幂等键</td></tr>
+      <tr><td>拒绝</td><td>不执行；原因回写 Agent</td><td>拒绝人、原因、时间</td></tr>
+      <tr><td>超时</td><td>拒绝（expired）；通知发起人</td><td>expires_at、超时事件、下一步</td></tr>
+      <tr><td>无人可批</td><td>升级到 backup；仍无人则停止任务</td><td>升级路径、等待时长</td></tr>
+      <tr><td>Break-glass</td><td>显式绕过；双人确认或事后复核</td><td>原因、授权人、高优先级审计</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <span class="label">检查</span>
+    <p>
+      TTL 是否服从事故 SLA？一个 15 分钟的审批窗口，放在 5 分钟的事故 SLA 里，实际等于“不允许 Agent 处理”。
+      等待是否不占线程/计算（<code>interrupt</code>、<code>wait_condition</code>）？
+      超时后 Agent 是真的停止，还是偷偷继续循环？
+    </p>
+  </div>
+
+  <h2 id="durable"><span class="num">06</span>持久化执行清单</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>状态放在哪里</h4>
+      <ul>
+        <li>审批状态在图里：简单，适合单编排器。</li>
+        <li>审批状态在外部服务：适合多消费者、多人协作。</li>
+        <li>用 request_id 关联两份状态。</li>
+        <li>明确单一事实来源，避免“图里批准、系统里拒绝”。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>崩溃窗口</h4>
+      <ul>
+        <li>先写 effect 再消费审批：可能重复，靠幂等键去重。</li>
+        <li>先消费审批再写 effect：可能丢动作，需要人工对账。</li>
+        <li>按动作语义选择，不要一刀切。</li>
+        <li>目标系统必须强制稳定幂等键，或提供事务/对账。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>恢复语义</h4>
+      <ul>
+        <li>resume 会重跑未完成节点；已完成节点不重跑。</li>
+        <li>resume 会重放 interrupt 前的 stream 事件；前端按 event_id 去重。</li>
+        <li>审批卡用 request_id 去重，避免恢复后弹第二张。</li>
+        <li>不要自动重放结果不确定的动作。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>审计</h4>
+      <ul>
+        <li>每个请求：创建、决定、执行、消费、过期。</li>
+        <li>每条事件：时间、actor、request_id、tool、digest、结果。</li>
+        <li>高风险动作 100% 可追溯到审批人与参数。</li>
+        <li>审计日志与业务日志分开保存。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="metrics"><span class="num">07</span>评测指标</h2>
+
+  <table>
+    <thead><tr><th>指标</th><th>回答的问题</th><th>异常信号</th></tr></thead>
+    <tbody>
+      <tr><td>Approval volume</td><td>每位审批人每小时处理多少条？</td><td>超过处理能力 → 疲劳</td></tr>
+      <tr><td>Time-to-decision p50/p95</td><td>人花了多久决定？</td><td>p50 &lt; 5s → 橡皮图章</td></tr>
+      <tr><td>Approval rate</td><td>批准比例是多少？</td><td>≈100% → gate 装饰化；≈0% → 策略过严</td></tr>
+      <tr><td>Override / edit rate</td><td>多少人改参数或拒绝？</td><td>高 → 审批卡信息不足</td></tr>
+      <tr><td>Expiry / pending age</td><td>多少过期？最老待办多久？</td><td>高 → 审批成为瓶颈</td></tr>
+      <tr><td>Escaped-action rate</td><td>批准的动作里多少事后不该做？</td><td>抽样审计；真实漏检率</td></tr>
+      <tr><td>Replay / duplicate effects</td><td>重试产生新副作用了吗？</td><td>任何新重复副作用都是幂等失败</td></tr>
+      <tr><td>Audit completeness</td><td>高风险动作证据齐全吗？</td><td>缺失 → 无法复盘/合规</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small">
+    成对看指标：审批率下降本身不是目标；要的是 escaped-action rate 不上升的前提下，减少不必要的打断。
+  </p>
+
+  <h2 id="java"><span class="num">08</span>和 Java 后端对照</h2>
+
+  <table>
+    <thead><tr><th>HITL 概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>Policy engine</td><td>风控规则引擎 / 审批中间件；规则版本化</td></tr>
+      <tr><td>ApprovalRequest</td><td>审批单 / 工单；maker-checker</td></tr>
+      <tr><td>digest</td><td>请求指纹、幂等键、防篡改校验</td></tr>
+      <tr><td>Four-eyes</td><td>双人复核；支付/清算/权限变更</td></tr>
+      <tr><td>Expiry + default deny</td><td>审批超时自动拒绝；boundary timer</td></tr>
+      <tr><td>ApproverDirectory</td><td>IAM / 角色 / on-call 组</td></tr>
+      <tr><td>Consume atomically</td><td>条件更新 + 乐观锁 + 唯一约束</td></tr>
+      <tr><td>Effect ledger</td><td>幂等表 / outbox / 去重表</td></tr>
+      <tr><td>Audit</td><td>审计日志、操作留痕、调用链</td></tr>
+      <tr><td><code>interrupt</code> / <code>wait_condition</code></td><td>工作流用户任务 + 流程实例持久化</td></tr>
+    </tbody>
+  </table>
+
+  <div class="source-card">
+    <div class="label">一手资料</div>
+    <h3>OpenAI Agents SDK — Human-in-the-loop</h3>
+    <p>
+      审批状态、序列化与恢复、客户端安全边界，以及“approval is not exactly-once execution”的警告。
+      配套读 LangChain HITL middleware（approve/edit/reject/respond）与 12-Factor Factor 7（human contact as tool call）。
+    </p>
+    <p>
+      <a href="https://openai.github.io/openai-agents-python/human_in_the_loop/">openai.github.io/openai-agents-python/human_in_the_loop</a><br>
+      <a href="https://docs.langchain.com/oss/python/langchain/human-in-the-loop">docs.langchain.com/oss/python/langchain/human-in-the-loop</a><br>
+      <a href="https://github.com/humanlayer/12-factor-agents/blob/main/content/factor-07-contact-humans-with-tools.md">github.com/humanlayer/12-factor-agents — Factor 7</a>
+    </p>
+    <p class="small">
+      安全与治理：<a href="https://genai.owasp.org/llmrisk/llm062025-excessive-agency/">OWASP LLM06</a> ·
+      <a href="https://artificialintelligenceact.eu/article/14/">EU AI Act Art. 14</a> ·
+      <a href="https://www.microsoft.com/en-us/research/uploads/prod/2019/01/Guidelines-for-Human-AI-Interaction-camera-ready.pdf">Microsoft HAX Guidelines</a>
+    </p>
+  </div>
+
+  <nav class="footer-nav">
+    <a href="course-roadmap.html">← 课程路线图</a>
+    <a href="mcp-checklist.html">MCP 设计与接入清单</a>
+    <a class="next" href="../lessons/0012-hitl.html">第 12 课：人在回路 →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

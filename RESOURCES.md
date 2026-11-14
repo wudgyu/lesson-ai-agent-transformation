@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-11-12。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-11-14。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -65,6 +65,29 @@
   memory stream + reflection；按 recency / importance / relevance 动态检索记忆。
 - [LangChain — Context Engineering for Agents](https://blog.langchain.com/context-engineering-for-agents/)
   write / select / compress / isolate 四个动作；context poisoning / distraction / confusion / clash。
+
+### Human-in-the-loop 与审批
+
+- [OpenAI Agents SDK — Human-in-the-loop](https://openai.github.io/openai-agents-python/human_in_the_loop/)
+  **第 12 课精读**。`needs_approval`、`ToolApprovalItem`、`RunState.approve/reject`、序列化与恢复；重点：参数缺失时 fail closed、客户端审批的安全边界、“approval is not exactly-once execution”的警告。
+- [LangChain — Human-in-the-loop](https://docs.langchain.com/oss/python/langchain/human-in-the-loop)
+  **第 12 课精读（选段）**。`HumanInTheLoopMiddleware`、`interrupt_on`、approve/edit/reject/respond 四种决定、checkpointer + thread_id、batched vs per_call。
+- [LangGraph — Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)
+  第 9 / 12 课机制回顾。`interrupt()` / `Command(resume=...)` 的暂停恢复协议；第 12 课把它当作审批状态的底层机制。
+- [12-Factor Agents — Factor 7: Contact humans with tool calls](https://github.com/humanlayer/12-factor-agents/blob/main/content/factor-07-contact-humans-with-tools.md)
+  把“找人”做成结构化工具调用：`question`、`context`、`options{urgency, format, choices}`；保存 thread、跳出循环、webhook 恢复。
+- [Temporal — Human-in-the-loop](https://docs.temporal.io/ai-cookbook/human-in-the-loop-python)
+  durable workflow 里的审批：signal 携带决定、`wait_condition` 等待、超时结束、等待不占计算。
+- [OWASP — LLM06:2025 Excessive Agency](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/)
+  过度代理的三类成因（功能、权限、自主性）与缓解：限制工具范围、最小权限、高风险动作人工批准、下游系统强制权限。
+- [EU AI Act — Article 14: Human oversight](https://artificialintelligenceact.eu/article/14/)
+  高风险 AI 的人类监督义务：理解能力与局限、防范 automation bias、解释输出、推翻/逆转、随时中断；特定场景要求两位有资质的人复核。
+- [Microsoft — Guidelines for Human-AI Interaction](https://www.microsoft.com/en-us/research/uploads/prod/2019/01/Guidelines-for-Human-AI-Interaction-camera-ready.pdf)
+  CHI 2019 的 18 条指南；第 12 课用到 G2（能力边界）、G11（解释原因）、G16（传达后果）、G17（全局控制）、G18（变更通知）。
+- [Google PAIR — Feedback + Control](https://pair.withgoogle.com/chapter/feedback-controls/)
+  反馈与控制的设计原则：平衡自动化与控制，敏感/高风险场景需要更高的用户控制。
+- [Anthropic — Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents)
+  第 12 课选读。Agent 可在 checkpoint 或遇到 blocker 时暂停等待人类反馈；用停止条件约束自主性。
 
 ### 检索与 RAG
 
