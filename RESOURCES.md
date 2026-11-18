@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-11-14。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-11-17。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -226,6 +226,34 @@
   2025-12-09 捐赠给 Linux Foundation 下的 AAIF；AAIF 由 Anthropic、OpenAI、Block 共同发起，Google/Microsoft/AWS 等为成员。
 - [MCP — Getting Started](https://modelcontextprotocol.io/docs/getting-started/intro)
   快速搭建 server/client 的官方入口。
+
+### 评测方法与校准
+
+- [Anthropic — Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
+  **第 13 课精读**。20–50 个真实任务起步、任务无歧义且有参考解、code/model/human grader 取舍、
+  capability vs regression、pass^k、读 transcript、eval saturation、评测团队与维护。
+- [Hamel Husain — Your AI Product Needs Evals](https://hamel.dev/blog/posts/evals/)
+  **第 13 课精读（前半）**。三层评测（断言 / 人工+模型 / A/B）、从失败中建 case、
+  单元断言与 trace 审查；核心主张：失败的 AI 产品通常缺一套可靠评测系统。
+- [Hamel Husain — Creating a LLM-as-a-Judge that drives business results](https://hamel.dev/blog/posts/llm-judge/)
+  **第 13 课精读（后半）**。critique shadowing、binary pass/fail + critique、30 个样本起步、
+  每类失败模式约 100 个、10–20/40–45/40–45 划分、TPR/TNR 与 5% 失败率的 agreement 陷阱。
+- [Zheng et al. — Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena (arXiv:2306.05685)](https://arxiv.org/abs/2306.05685)
+  **第 13 课精读（偏差）**。position / verbosity / self-enhancement bias 与有限推理；
+  强 judge 与人类偏好 agreement 可超过 80%，与人类-人类 agreement 相当。
+- [Shankar et al. — Who Validates the Validators? (EvalGen, arXiv:2404.12272)](https://arxiv.org/abs/2404.12272)
+  UIST 2024。criteria drift：标准与输出互相塑形；评测集与 rubric 必须迭代，不能一次性定死。
+- [Yao et al. — τ-bench (arXiv:2406.12045)](https://arxiv.org/abs/2406.12045)
+  **第 13–14 课**。用户模拟 + 数据库状态验收；pass^k 可靠性指标；GPT-4o retail pass^1 约 61%，pass^8 低于 25%。
+- [Kapoor et al. — AI Agents That Matter (arXiv:2407.01502)](https://arxiv.org/abs/2407.01502)
+  成本受控的 Agent 评测、准确率-成本 Pareto、holdout 与 benchmark overfitting；第 13 课的成本与留出集依据。
+- [OpenAI — Evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices)
+  指标型 / 人工 / LLM-as-judge 三类 evaluator；Agent 专项类别：指令遵循、工具选择、参数精度、功能正确性、handoff。
+- [OpenAI — Graders](https://developers.openai.com/api/docs/guides/graders)
+  代码 grader（`string_check` / `text_similarity` / `python`）与模型 grader（`label_model` / `score_model`）；
+  grader 校验与 reward hacking 防护。第 13 课“先代码后模型”的 API 对照。
+- [LangSmith — How to define an LLM-as-a-judge evaluator](https://docs.langchain.com/langsmith/llm-as-judge)
+  feedback schema 即 rubric；Boolean / Categorical / Continuous；人工修正自动成为 few-shot。
 
 ### 评测、可观测与安全
 

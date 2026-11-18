@@ -57,12 +57,13 @@
   </p>
 
   <div class="callout note">
-    <span class="label">五个最容易混淆的区别</span>
+    <span class="label">六个最容易混淆的区别</span>
     <p><strong>Agent vs Workflow：</strong>控制流由谁决定。代码写死的是 workflow；模型每步自己决定的是 agent。</p>
     <p><strong>Tool calling vs Agent：</strong>工具调用只是一次能力扩展；Agent 是在循环里根据观察反复决定下一步。</p>
     <p><strong>RAG vs Memory：</strong>RAG 检索外部知识；Memory 保存这次/历次交互的状态与经验。两者都进上下文，但来源与生命周期不同。</p>
     <p><strong>Supervisor vs Handoff：</strong>控制权是否转移。Supervisor 保持控制、接收摘要；Handoff 把控制权交给 specialist，通常共享会话历史。</p>
     <p><strong>MCP vs Function calling：</strong>MCP 是工具提供方与消费方之间的协议；function calling 是模型输出“调用哪个工具”的格式。二者常串联，不互相替代。</p>
+    <p><strong>Eval vs Benchmark：</strong>benchmark 衡量别人的分布，通常用于模型对比；eval 衡量你的用户真正会遇到的分布，用于产品决策。前者可以刷分，后者必须能指导改动。</p>
   </div>
 
   <div class="glossary-group">
@@ -217,8 +218,21 @@
         <tr id="term-eval"><td>评测<span class="en">eval</span></td><td>用一组可重复的任务与标准，衡量 Agent 的表现。没有评测，改进只能靠感觉。</td><td>W1 L2</td></tr>
         <tr id="term-tool-selection"><td>工具选择准确率<span class="en">tool-selection accuracy</span></td><td>Agent 第一步是否选中了合适工具的比例。衡量工具命名、描述与粒度是否清晰的核心指标。</td><td>W1 L4</td></tr>
         <tr id="term-golden-set"><td>黄金集<span class="en">golden set</span></td><td>人工确认过期望输出的评测样本。应覆盖正常、边界、对抗与“应该拒答”的情况。</td><td>W3 D15</td></tr>
+        <tr id="term-rubric"><td>评分标准<span class="en">rubric</span></td><td>把“好答案”拆成原子、可观察、可独立判定的维度；每个维度用 PASS/FAIL/UNKNOWN，而不是 1–5 分整体印象。</td><td>W3 L13</td></tr>
+        <tr id="term-grader"><td>评分器<span class="en">grader</span></td><td>真正执行判定的组件：代码断言、LLM judge 或人工评审。优先用代码判硬契约，再用模型判开放式质量。</td><td>W3 L13</td></tr>
+        <tr id="term-capability-eval"><td>能力评测<span class="en">capability eval</span></td><td>问“Agent 能做什么”：从低通过率开始，专门找弱点，是待爬的山。适合新功能与新模型。</td><td>W3 L13</td></tr>
+        <tr id="term-regression-eval"><td>回归评测<span class="en">regression eval</span></td><td>问“以前能做的现在还会吗”：应接近 100%，防止改动把已有能力弄坏。能力评测成熟后可毕业为回归评测。</td><td>W3 L13</td></tr>
+        <tr id="term-holdout-set"><td>留出集<span class="en">holdout set</span></td><td>不参与 prompt/rubric 调整的评测样本。用来估计真实泛化，防止针对测试集过拟合。</td><td>W3 L13</td></tr>
+        <tr id="term-error-analysis"><td>错误分析<span class="en">error analysis</span></td><td>读失败 trace、按根因聚类、再把失败写成 case 的过程。它决定评测集长什么样，比堆指标更重要。</td><td>W3 L13</td></tr>
         <tr id="term-llm-judge"><td>LLM-as-judge</td><td>用另一个模型按 rubric 给输出打分。便宜、可扩展，但需要校准，避免位置偏差与自我偏好。</td><td>W3 D15</td></tr>
+        <tr id="term-judge-calibration"><td>Judge 校准<span class="en">judge calibration</span></td><td>把 judge 当二分类器，用人工标签测 TPR/TNR/agreement；低 TPR 是漏检，低 TNR 是误报。agreement 高不代表可用。</td><td>W3 L13</td></tr>
+        <tr id="term-position-bias"><td>位置偏差<span class="en">position bias</span></td><td>成对比较时 judge 偏好某个位置（通常是第一个）。缓解：交换 A/B 跑两次、随机化、取平均或要求一致。</td><td>W3 L13</td></tr>
+        <tr id="term-verbosity-bias"><td>长度偏差<span class="en">verbosity bias</span></td><td>judge 偏好更长的答案，即使信息更少。缓解：rubric 写明长度不加分，用要点覆盖度替代字数。</td><td>W3 L13</td></tr>
+        <tr id="term-self-enhancement-bias"><td>自我偏好<span class="en">self-enhancement bias</span></td><td>judge 偏好同家族模型的输出。缓解：用不同家族的 judge、多 judge 投票、人工校准。</td><td>W3 L13</td></tr>
+        <tr id="term-criteria-drift"><td>标准漂移<span class="en">criteria drift</span></td><td>人需要标准才能评判输出，但看输出又会改变标准。评测集与 rubric 因此是迭代的，不是一次定死的。</td><td>W3 L13</td></tr>
+        <tr id="term-eval-saturation"><td>评测饱和<span class="en">eval saturation</span></td><td>所有 case 都通过后，评测不再能区分好坏。需要加更难的 capability case，或把老 case 毕业成 regression。</td><td>W3 L13</td></tr>
         <tr id="term-pass-k"><td>pass^k</td><td>同一任务重复 k 次全部成功的概率，衡量可靠性而非“试几次总能对”。生产系统更关心 pass^k。</td><td>W3 D16</td></tr>
+        <tr id="term-pass-at-k"><td>pass@k</td><td>同一任务重复 k 次至少成功一次的概率，随 k 上升。它衡量“多试几次能不能碰到”，不等于单次可靠性。</td><td>W3 L13</td></tr>
         <tr id="term-trace"><td>Trace</td><td>一次请求的完整调用链：每步的输入、输出、工具、耗时、token、错误。Agent 调试的第一现场。</td><td>W1 L3</td></tr>
         <tr id="term-observability"><td>可观测性<span class="en">observability</span></td><td>通过日志、指标、trace 回答“系统现在发生了什么、为什么”。Agent 的非确定性让它比传统服务更重要。</td><td>W3 D17</td></tr>
         <tr id="term-guardrail"><td>护栏<span class="en">guardrail</span></td><td>在输入、输出或工具调用前后执行的校验与限制，用于拦截不安全内容、越权操作与格式错误。</td><td>W2/W3</td></tr>
@@ -236,8 +250,8 @@
 
   <nav class="footer-nav">
     <a href="course-roadmap.html">← 课程路线图</a>
-    <a href="../lessons/0003-agent-loop.html">第 3 课：Agent 循环</a>
-    <a class="next" href="../MISSION.md">任务说明 →</a>
+    <a href="../lessons/0013-eval-datasets-judge.html">第 13 课：评测 I</a>
+    <a class="next" href="eval-checklist.html">评测设计与校准清单 →</a>
   </nav>
 
 </main>

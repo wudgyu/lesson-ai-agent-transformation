@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>评测设计与校准清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.85rem 1rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+    break-inside: avoid;
+  }
+  .check-card h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.22rem 0; }
+  .check-grid + h2 { margin-top: 2.4rem; }
+  @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+  .contract {
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--win);
+    border-radius: 0 4px 4px 0;
+    padding: 0.8rem 1rem;
+    margin: 1rem 0 1.4rem;
+    background: var(--win-soft);
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .matrix td:first-child { font-weight: 650; white-space: nowrap; }
+  .matrix td { font-size: 0.82rem; }
+  .matrix .tp { background: var(--win-soft); }
+  .matrix .tn { background: var(--note-soft); }
+  .matrix .fp { background: var(--warn-soft); }
+  .matrix .fn { background: var(--accent-soft); }
+  .stat td:last-child { text-align: right; font-family: var(--mono); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>评测设计与校准清单</h1>
+  <p class="subtitle">没有置信区间、没有切片、没有校准过的 judge 的分数，只是噪声。</p>
+  <div class="meta">
+    <span>首次建立 2026-11-17</span>
+    <span>配套 Lesson 0013</span>
+    <span>可打印</span>
+  </div>
+
+  <p class="lede">
+    这张清单回答四个问题：评测集从哪里来？什么叫“通过”？用谁来判？怎么知道这个判断可信？
+    先记住三句话，再按数据集、rubric、grader、judge、校准、统计与 CI 逐项检查。
+  </p>
+
+  <h2 id="model"><span class="num">01</span>三句话心智模型</h2>
+
+  <div class="formula">
+    <strong>数据集决定测什么</strong> · <strong>rubric 决定什么叫过</strong> · <strong>校准决定 judge 能不能信</strong>
+  </div>
+
+  <ol>
+    <li><strong>评测不是发布前的一次考试，而是迭代的飞轮。</strong>每一次真实失败都应该变成一个 case，每一个 case 都应该进入回归门禁。</li>
+    <li><strong>先代码，后模型，再人工。</strong>能用确定性 grader 判的，不要用 judge；能用 judge 判的，不要找人。顺序反了，成本和噪声都会失控。</li>
+    <li><strong>一个分数不是报告。</strong>报告至少要有切片、置信区间、失败清单和成本；否则你无法判断下一次改动该往哪走。</li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="label">最容易犯的错</span>
+    <p>
+      用一个<strong>永远说 pass</strong> 的 judge，在失败率很低的数据上拿到 95% 的 raw agreement，
+      然后以为评测已经可用。它的 TPR 是 0：一个失败都没抓到。永远先看 TPR/TNR，再看 agreement。
+    </p>
+  </div>
+
+  <h2 id="dataset"><span class="num">02</span>评测集清单</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>来源与规模</h4>
+      <ul>
+        <li>先收集 20–50 个真实失败；从工单、bug 报告、发布检查、trace 中取样。</li>
+        <li>优先用户影响大的任务，不是最容易写的任务。</li>
+        <li>合成数据只补边界；不要用合成集替代真实分布。</li>
+        <li>每个任务有输入、参考解、成功标准、约束与预算。</li>
+        <li>参考解证明任务可解；全员 0% 先怀疑 case/grader。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>平衡与反例</h4>
+      <ul>
+        <li>既要测“该回答时回答”，也要测“该拒答时拒答”。</li>
+        <li>每类标签的样本数尽量均衡；min/max 差不超过 1。</li>
+        <li>包含边界、对抗、信息不足、证据冲突的 case。</li>
+        <li>capability 与 regression 分开标记；regression 应接近 100%。</li>
+        <li>难度分布要有 easy / medium / hard，不要全是难题。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>泄漏与重复</h4>
+      <ul>
+        <li>incident 不出现根因标签、<code>根因是</code>、<code>root cause</code> 等结论句。</li>
+        <li>evidence 是观测值，不是“根因：X”这样的答案。</li>
+        <li>normalized incident 去重；不要只换 service 名复制。</li>
+        <li>检查 title / metadata 是否被喂给了 Agent；如果会，也算输入。</li>
+        <li>保留 held-out 集，不要用它调 prompt 或 rubric。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>环境与可复现</h4>
+      <ul>
+        <li>每次 trial 从干净环境开始；清理缓存、文件、git 历史。</li>
+        <li>固定模型版本、temperature、seed（如支持）、工具版本。</li>
+        <li>记录 token、工具调用数、延迟与成本。</li>
+        <li>保留原始 trace；报告是从 trace 生成的，不是手填的。</li>
+        <li>criteria 会 drift：看输出会改变标准，迭代是正常的。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="task"><span class="num">03</span>任务与 rubric 清单</h2>
+
+  <div class="contract">任务契约
+  input        Agent 实际能看到什么？（incident + evidence + tools）
+  reference    人类参考解，证明任务可解
+  criteria     每个维度独立、可观察、可判定
+  constraints  只读 / 审批 / 预算 / 必须拒答
+  budget       最大步数、token、延迟
+
+rubric 维度
+  R1  根因正确，或证据不足时正确拒答
+  R2  每个 claim 有引用；必需证据齐；quote 逐字
+  R3  动作 ≤ 允许 tier；未知工具 fail closed
+  R4  服务、症状、下一步说清楚
+
+overall = R1 ∧ R2 ∧ R3 ∧ R4
+安全维度是一票否决，不参与平均。</div>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>写 rubric 时</h4>
+      <ul>
+        <li>一个维度只问一件事；不要“准确、完整且有帮助”。</li>
+        <li>用 binary PASS/FAIL + critique，不用 1–5 分整体评分。</li>
+        <li>允许 UNKNOWN；证据不足时不要逼 judge 编判决。</li>
+        <li>每个维度独立调用一个 judge，避免硬失败被平均掉。</li>
+        <li>rubric 有版本；标准变了，旧分数不可直接比较。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>写成功标准时</h4>
+      <ul>
+        <li>grade outcome，不 grade 路径；除非过程本身是需求。</li>
+        <li>不要用僵化的 tool-sequence 检查拒绝合法探索。</li>
+        <li>两位领域专家独立看同一输出，应得出相同 pass/fail。</li>
+        <li>把成本写进标准；准确率不是唯一目标。</li>
+        <li>负向案例与正向案例同等重要。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="graders"><span class="num">04</span>Grader 选择与测试清单</h2>
+
+  <table>
+    <thead><tr><th>Grader</th><th>先用来判什么</th><th>不要用来判什么</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Code</strong></td><td>schema、枚举、引用 ID、quote 子串、动作 tier、禁用词、工具调用结果</td><td>证据是否充分、解释是否自洽、语气是否专业</td></tr>
+      <tr><td><strong>Model</strong></td><td>开放式答案的清晰度、证据充分性、根因解释、下一步具体性</td><td>能用代码算的硬契约；需要精确计算的数字</td></tr>
+      <tr><td><strong>Human</strong></td><td>校准集标注、边界案例、抽样审计、judge 分歧复核</td><td>全量回归；高频率、低风险的评分</td></tr>
+    </tbody>
+  </table>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>测试 grader 本身</h4>
+      <ul>
+        <li>完美答案 → 全部通过。</li>
+        <li>明显错误答案 → 对应维度失败。</li>
+        <li>边界答案 → 给出可解释的失败原因。</li>
+        <li>格式错误 → schema 失败，不算模型能力失败。</li>
+        <li>每次意外失败先问：模型错，还是 grader 错？</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>防 grader hacking</h4>
+      <ul>
+        <li>grader 留在评测侧，不暴露给 Agent。</li>
+        <li>使用 held-out 与对抗性 case。</li>
+        <li>不要只奖励“包含某个 ID/关键词”。</li>
+        <li>长度、格式、引用数都可以被灌水；用覆盖度与 groundedness。</li>
+        <li>定期换 rubric 版本，保留人工抽样。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout note">
+    <span class="label">真实 bug 提醒</span>
+    <p>
+      CORE-Bench 曾因 rigid numeric matching、任务歧义与 scaffold 约束把 Opus 4.5 压在 42%，
+      修好 grader 后升到 95%。METR 也发现过“要求超过阈值”的 grader 惩罚了严格按指令达到阈值的模型。
+      这些是评测器 bug，不是模型退化。读 transcript，别只看分数。
+    </p>
+  </div>
+
+  <h2 id="judge"><span class="num">05</span>LLM-as-judge 设计清单</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>Prompt 设计</h4>
+      <ul>
+        <li>只评一个维度；不要一个 prompt 评四件事。</li>
+        <li>包含任务、输入、证据、参考解与 rubric。</li>
+        <li>先写 critique，再给 verdict。</li>
+        <li>提供 3–5 个带 critique 的 few-shot 示例。</li>
+        <li>输出结构化 JSON；verdict 只能是 PASS/FAIL/UNKNOWN。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>偏差与安全</h4>
+      <ul>
+        <li><strong>Position bias：</strong>交换 A/B 跑两次；取平均或要求一致。</li>
+        <li><strong>Verbosity bias：</strong>写明长度不加分；用要点覆盖度。</li>
+        <li><strong>Self-enhancement：</strong>用不同家族的 judge；多 judge 投票。</li>
+        <li>把答案/证据标为不可信数据，防止 prompt injection。</li>
+        <li>judge 不执行工具、不访问网络，只输出评分。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>成本与抽样</h4>
+      <ul>
+        <li>用负担得起的最强模型；judge 可以比生产模型更大。</li>
+        <li>代码 grader 全量跑；judge 抽样跑；人工只跑分歧。</li>
+        <li>缓存相同输入的 judge 结果；固定 prompt 版本。</li>
+        <li>记录 judge 的 token 成本与延迟。</li>
+        <li>成本超过决策价值时，退回代码或人工。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>常见错误</h4>
+      <ul>
+        <li>没有 critique，只有一个分数。</li>
+        <li>critique 太短，无法解释 verdict。</li>
+        <li>缺少专家使用的外部上下文。</li>
+        <li>few-shot 示例不够多样，只覆盖 happy path。</li>
+        <li>用未校准的现成 judge 直接上线。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="calibration"><span class="num">06</span>Judge 校准清单</h2>
+
+  <p>
+    把 fail 当正类。四个格子分别是 TP（抓到失败）、FN（漏检）、FP（误报）、TN（正确保留）。
+  </p>
+
+  <table class="matrix">
+    <thead><tr><th></th><th>Judge 判 fail</th><th>Judge 判 pass</th></tr></thead>
+    <tbody>
+      <tr><td>人类判 fail</td><td class="tp"><strong>TP</strong><br>抓到了</td><td class="fn"><strong>FN</strong><br>漏掉了</td></tr>
+      <tr><td>人类判 pass</td><td class="fp"><strong>FP</strong><br>误报了</td><td class="tn"><strong>TN</strong><br>正确保留</td></tr>
+    </tbody>
+  </table>
+
+  <div class="formula">
+    <strong>TPR = TP / (TP + FN)</strong> · <strong>TNR = TN / (TN + FP)</strong> · <strong>raw agreement = (TP + TN) / N</strong>
+  </div>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>样本量与划分</h4>
+      <ul>
+        <li>先约 30 个样本，直到新失败模式不再出现。</li>
+        <li>验证 judge 时，每个失败模式约 100 个样本。</li>
+        <li>少于 60 个样本，置信区间通常太宽。</li>
+        <li>大致 10–20% train、40–45% dev、40–45% test。</li>
+        <li>dev/test 每类尽量 30–50 个；测试集不放进 prompt。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>校准流程</h4>
+      <ul>
+        <li>找一位领域专家，他的判断定义“好”。</li>
+        <li>每个样本标 pass/fail + 详细 critique。</li>
+        <li>先修明显产品 bug，再建 judge。</li>
+        <li>用 critique 做 few-shot；迭代 prompt。</li>
+        <li>冻结 prompt，在 held-out 上跑一次最终估计。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>如何读结果</h4>
+      <ul>
+        <li>低 TPR = 漏检；坏答案会上线。</li>
+        <li>低 TNR = 误报；好答案会被反复打回。</li>
+        <li>失败率 5% 时，永远 pass 的 judge agreement 约 95%。</li>
+        <li>平衡集上 &gt;90% agreement 才比较有意义。</li>
+        <li>报告 TPR/TNR，不只报告 agreement。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>维护</h4>
+      <ul>
+        <li>换 judge 模型 → 重新校准。</li>
+        <li>改生产 prompt / 工具 schema → 重新校准。</li>
+        <li>judge prompt 与 calibration 集一起版本化。</li>
+        <li>定期看分歧样本，防止 judge 与产品一起漂移。</li>
+        <li>judge 是人工判断的放大器，不是替代品。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="stats"><span class="num">07</span>统计与报告清单</h2>
+
+  <table class="stat">
+    <thead><tr><th>要报的</th><th>回答的问题</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>点估计 + CI</td><td>真实通过率可能在什么范围？</td><td>32/40 = 80% [65.2%, 89.5%]</td></tr>
+      <tr><td>切片</td><td>哪一类在退步？</td><td>capability 78.6% · regression 83.3%</td></tr>
+      <tr><td>成对 diff</td><td>同一 case 上谁更好？</td><td>fixed 19 · regressed 7</td></tr>
+      <tr><td>pass^k</td><td>连续 k 次都可靠吗？</td><td>0.80³ = 51.2%</td></tr>
+      <tr><td>成本</td><td>每任务多少钱/多少 token？</td><td>准确率-成本 Pareto 曲线</td></tr>
+      <tr><td>失败清单</td><td>具体错在哪一维？</td><td>根因 / 证据 / 安全 / schema</td></tr>
+    </tbody>
+  </table>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>不要过度解读</h4>
+      <ul>
+        <li>40 个 case 的 2 个百分点差异通常是噪声。</li>
+        <li>两个独立百分比不如同一 case 的成对比较敏感。</li>
+        <li>小样本的极端值（0/10、10/10）用 Wilson 区间。</li>
+        <li>pass@k 上升不代表可靠性；看 pass^k。</li>
+        <li>总分上升可能掩盖 regression；必须看切片。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>维护评测集</h4>
+      <ul>
+        <li>capability 饱和后毕业为 regression。</li>
+        <li>持续从生产失败中添加新 case。</li>
+        <li>监控 eval saturation：全员通过时加难度。</li>
+        <li>保留 held-out，防止 benchmark overfitting。</li>
+        <li>读 transcript；聚合数字会隐藏原因。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="ci"><span class="num">08</span>CI 与生产清单</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>仓库结构</h4>
+      <ul>
+        <li><code>cases.jsonl</code>、<code>rubric.md</code>、<code>graders/</code>、<code>judge_prompt.md</code> 版本化。</li>
+        <li><code>calibration.jsonl</code> 与 judge prompt 同步更新。</li>
+        <li><code>runs/</code> 保存原始输出；报告可重建。</li>
+        <li>schema 与 case 一起测试；坏数据早失败。</li>
+        <li>数据脱敏；评测数据按生产数据管理。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>门禁规则</h4>
+      <ul>
+        <li>dataset audit 必须通过。</li>
+        <li>regression 切片必须 100%（或明确的豁免）。</li>
+        <li>安全 grader 失败 → 直接阻止合并。</li>
+        <li>capability 与 baseline 比较，报告 CI 与 diff。</li>
+        <li>不要只用 <code>--fail-under</code>；按切片与安全规则拆开。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>生产闭环</h4>
+      <ul>
+        <li>线上 trace 抽样 → 失败分析 → 新 case。</li>
+        <li>人工反馈 → 校准集 → judge 更新。</li>
+        <li>A/B 测试验证业务指标，不只验证模型分数。</li>
+        <li>监控成本、延迟与错误率。</li>
+        <li>“Swiss cheese” 多层评估：自动 + 人工 + 生产。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>组织与所有权</h4>
+      <ul>
+        <li>专门团队维护评测基础设施。</li>
+        <li>领域专家贡献 case、跑评测、读 trace。</li>
+        <li>产品团队对 rubric 的业务含义负责。</li>
+        <li>评测结果进入发布评审，不是附件。</li>
+        <li>没有人拥有评测，评测就会退化。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="java"><span class="num">09</span>和 Java 后端对照</h2>
+
+  <table>
+    <thead><tr><th>评测概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>cases.jsonl</td><td>回归测试用例 / golden master</td></tr>
+      <tr><td>graders</td><td>Assertion / JSON Schema validator / 契约测试</td></tr>
+      <tr><td>reference answer</td><td>验收标准 / oracle</td></tr>
+      <tr><td>rubric</td><td>可独立判定的验收条目</td></tr>
+      <tr><td>LLM-as-judge</td><td>人工验收的自动化代理</td></tr>
+      <tr><td>TPR / TNR / kappa</td><td>分类器评估，不是 accuracy</td></tr>
+      <tr><td>capability / regression</td><td>新功能测试 / 回归测试</td></tr>
+      <tr><td>Wilson CI</td><td>A/B 实验置信区间</td></tr>
+      <tr><td>pass^k</td><td>连续 k 次运行全通过</td></tr>
+      <tr><td><code>--fail-under</code></td><td>CI 质量门禁</td></tr>
+    </tbody>
+  </table>
+
+  <div class="source-card">
+    <div class="label">一手资料</div>
+    <h3>Anthropic — Demystifying evals for AI agents</h3>
+    <p>
+      20–50 个真实任务、任务无歧义且有参考解、code/model/human grader 取舍、
+      capability vs regression、pass^k、读 transcript、eval saturation。
+    </p>
+    <p>
+      <a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">anthropic.com/engineering/demystifying-evals-for-ai-agents</a><br>
+      <a href="https://hamel.dev/blog/posts/evals/">hamel.dev/blog/posts/evals</a><br>
+      <a href="https://hamel.dev/blog/posts/llm-judge/">hamel.dev/blog/posts/llm-judge</a><br>
+      <a href="https://arxiv.org/abs/2306.05685">arxiv.org/abs/2306.05685 — LLM-as-judge biases</a><br>
+      <a href="https://arxiv.org/abs/2404.12272">arxiv.org/abs/2404.12272 — EvalGen / criteria drift</a><br>
+      <a href="https://arxiv.org/abs/2406.12045">arxiv.org/abs/2406.12045 — τ-bench / pass^k</a><br>
+      <a href="https://arxiv.org/abs/2407.01502">arxiv.org/abs/2407.01502 — AI Agents That Matter</a>
+    </p>
+  </div>
+
+  <nav class="footer-nav">
+    <a href="course-roadmap.html">← 课程路线图</a>
+    <a href="hitl-checklist.html">HITL 设计与审批清单</a>
+    <a class="next" href="../lessons/0013-eval-datasets-judge.html">第 13 课：评测 I →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>
