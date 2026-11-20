@@ -18,6 +18,7 @@
 ## 环境
 
 - Linux / WSL2 (Debian)，Python 3.9.2，`openai` 1.109.1 已安装。
+- 本次执行容器内系统 `python3` 不在 PATH；已用 `uv` 安装 Python 3.9.25 / 3.12.16 到 `~/.local/bin`，并加 `python3 -> python3.12` shim；测试用 `export PATH="$HOME/.local/bin:$PATH"`。lab 本身仍只要求 Python ≥ 3.9。
 - **LangGraph lab 需要 Python ≥ 3.10；MCP lab 的 `mcp` 2.3.x 也需要 ≥ 3.10**；用 `python3.12 -m venv` 或 `uv venv --python 3.12` 建独立环境，不改系统 Python。
 - 模型通过任意 OpenAI-compatible API 接入（`.env` 配置 `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`）。
 - 浏览器打开方式优先 `sensible-browser`；WSL 下如失败，用 Windows 侧打开路径。
@@ -52,8 +53,9 @@
 - 2026-11-12：Lesson 0011《MCP：把工具从函数变成协议》交付（含 `labs/0011-mcp`：RepoMedic MCP server、带策略的 client/gateway、stdio + Streamable HTTP、16 个离线测试；新增 `reference/mcp-checklist.html`）。已在 Python 3.12.16 + `mcp` 2.3.0 上跑通全部测试与 CLI，stdio 与 HTTP 两种传输均验证。核心观察：MCP 2026-07-28 是无状态核心（无 initialize/session，`_meta` 每请求携带版本/能力，`server/discover` 必实现，无 SSE 重放）；发现工具不等于信任工具，host 必须做任务级投影、allowlist、写操作审批、幂等键与输出标记；RepoMedic 4 个工具全量 schema 约 1419 token，triage 投影 3 个后约 992 token；`isError=true` 是工具执行错误，JSON-RPC error 才是协议错误；annotations 只是提示，不能替代 host 策略。
 - 2026-11-14：Lesson 0012《人在回路：审批不是按钮》交付（含 `labs/0012-hitl-policy`：T0–T4 策略分级、审批状态机、action digest 绑定、four-eyes、TTL/默认拒绝、幂等台账、崩溃重试、27 个离线测试；新增 `reference/hitl-checklist.html`）。已在 Python 3.9.25 + 3.12.16 上跑通全部测试与 CLI demo，不依赖第三方包。核心观察：风险等级是动作实例（工具 + 参数）的属性，不是工具名的属性；审批必须绑定 digest + 认证身份 + 时效，并在执行前重新评估策略；审批不等于 exactly-once，effect → consume 的崩溃窗口靠目标系统幂等键吸收；审批疲劳（通过率≈100%、决策 1–2 秒）说明 gate 已退化为橡皮图章。
 - 2026-11-17：Lesson 0013《评测 I：把“感觉不错”变成证据》交付（含 `labs/0013-eval-harness`：40 例 RepoMedic 案例、32 可回答 + 8 拒答、8 类根因各 4 个、baseline/candidate 两条录制 run、确定性 grader、RubricJudge、Wilson CI、pass^k、TPR/TNR 校准、位置偏差模拟、60 个离线测试；新增 `reference/eval-checklist.html`）。在 Python 3.12.16 上跑通 60 个测试与 CLI demo，仅标准库；源码用 `ast.parse(feature_version=(3, 9))` 检查过 3.9 语法兼容。核心观察：candidate 从 20/40 升到 32/40（50%→80%，CI [65.2, 89.5]），但 regression 仍只有 10/12，且 compare 发现 7 个 case 相对 baseline 回归；总分提升不能替代切片与 case 级 diff。Rubric judge 在 30 例校准集上 raw agreement 86.7%，但 TPR 仅 66.7%、TNR 91.7%；永远说 pass 的 baseline 有 80% agreement、TPR 0。A/B 交换位置后 12 组里 8 组改判，说明 judge 可能在测量顺序而不是质量。
+- 2026-11-20：Lesson 0014《评测 II：答案对了，不等于做对了》交付（含 `labs/0014-trajectory-ci`：16 例 RepoMedic 案例（12 capability + 4 regression，14 可回答 + 2 拒答）、v03/v04/v05 三条 run 各 48 条轨迹（16 case × 3 trials）、5 个轨迹评分器（outcome/evidence/process/safety/efficiency）、pass^k 组合数估计、bootstrap CI、McNemar、分层发布门禁、78 个离线测试；新增 `reference/trajectory-ci-checklist.html`）。在 Python 3.9.25 与 3.12.16 上均跑通 78 个测试与 CLI demo，仅标准库。核心读数：baseline contract 36/48（75.0%）、outcome-only 48/48、pass^3 75.0%；candidate contract 37/48（77.1%）、outcome-only 45/48（93.8%）、capability 29/36（80.6%）、regression 8/12（66.7%）、pass^3 43.8%、pass@3 93.8%、flake 50%、1 次未审批重启、2 个新回归、成本 1.26×，门禁 BLOCK（safety/regression/reliability）；hotfix contract 45/48（93.8%）、pass^3 81.2%、flake 18.8%、成本 0.80×，门禁 WARN（仅 flakiness）。
 - 交付顺序说明：按路线图 D15 先交付 Lesson 0013；D14 的 agent-v2 周项目仍是动手项目（没有单独课时页），建议在 0012 后启动，并把 0013 的 40 例评测集与校准方法直接用于项目验收。
-- 尚未获得 lab 1–13 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
+- 尚未获得 lab 1–14 的完成证据；每节课开头都有 90 秒回忆，若答不上来先补前一课。
 - 第 1 课的核心观察：模型只输出 tool_calls，不执行；temperature=0 不保证绝对确定；结构化输出必须 schema + 校验 + 修复循环。
 - 第 2 课的核心观察：baseline prompt 23 token，exact 0.500、schema 0.800；engineered prompt 339 token，exact 1.000、schema 1.000。上下文工程的交易是“用预算买确定性”，不是越长越好。
 - 第 5 课的核心观察：离线 `vector(lexical)` 只是词面向量，不能证明语义检索的收益；真实结论要等用户配置 embedding 后跑 dense/hybrid。
@@ -64,6 +66,7 @@
 - 第 11 课的核心观察：MCP 统一发现/调用/传输，不提供信任与授权；host 要按任务投影工具、默认拒绝写操作、审批后放行、用幂等键吸收重试、把工具输出标记为不可信数据；tools 是 model-controlled，resources 是 application-driven，prompts 是 user-controlled；2026-07-28 无 session，跨调用状态必须显式 handle。
 - 第 12 课的核心观察：审批是决策系统，不是按钮；分级看动作实例（可逆性 × 影响面），请求必须给证据/后果/回滚/时效，授权必须绑定 digest + 认证身份 + 单次消费，执行前要重新评估策略与有效期；“审批 ≠ exactly-once”，effect 先落盘再消费审批，用业务幂等键吸收崩溃重试；HITL 的质量要用通过率、决策延迟、橡皮图章率、过期率与 escaped-action rate 成对评估。
 - 第 13 课的核心观察：评测不是打分，是回归测试；数据集从真实失败中来，必须有无歧义输入、参考解、拒答案例、标签平衡、无泄漏与干净环境；rubric 要二进制、原子、可独立判定，安全维度一票否决；先代码 grader，后 LLM judge，再用人工校准；judge 是分类器，报 TPR/TNR 而不是 raw agreement（5% 失败率下永远 pass 也有 95% agreement）；40 例的 75% 约有 [59.8, 85.8] 的 95% CI，pass^3 只有 42.2%；总分提升可能掩盖 case 级回归，必须看切片与 diff。
+- 第 14 课的核心观察：任务成功是 outcome ∧ evidence ∧ process ∧ safety ∧ efficiency 的契约，不是最终答案；默认评 outcome，只有当路径本身是需求（审批、权限、runbook、证据来源、预算）时才写轨迹不变量，且每条不变量都要有“合法替代路径”测试；pass^k 是 E_task[C(c,k)/C(n,k)]，不是总体通过率的 k 次方，必须同时报 pass@k、flake rate 与 per-case 矩阵；门禁要分层，integrity fail closed，安全/回归/可靠性硬阻断，能力用配对 McNemar，成本与抖动为软信号；candidate 77.1% contract / 93.8% outcome / pass^3 43.8% 仍被 BLOCK，说明总分是仪表盘，门禁才是发布契约。
 - 已补 D1/D2 作为 Lesson 0001/0002，并把原 L1–L5 顺延为 L3–L8；roadmap、labs、glossary 与所有交叉链接已同步。
 
 ## 待确认

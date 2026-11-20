@@ -231,9 +231,14 @@
         <tr id="term-self-enhancement-bias"><td>自我偏好<span class="en">self-enhancement bias</span></td><td>judge 偏好同家族模型的输出。缓解：用不同家族的 judge、多 judge 投票、人工校准。</td><td>W3 L13</td></tr>
         <tr id="term-criteria-drift"><td>标准漂移<span class="en">criteria drift</span></td><td>人需要标准才能评判输出，但看输出又会改变标准。评测集与 rubric 因此是迭代的，不是一次定死的。</td><td>W3 L13</td></tr>
         <tr id="term-eval-saturation"><td>评测饱和<span class="en">eval saturation</span></td><td>所有 case 都通过后，评测不再能区分好坏。需要加更难的 capability case，或把老 case 毕业成 regression。</td><td>W3 L13</td></tr>
-        <tr id="term-pass-k"><td>pass^k</td><td>同一任务重复 k 次全部成功的概率，衡量可靠性而非“试几次总能对”。生产系统更关心 pass^k。</td><td>W3 D16</td></tr>
+        <tr id="term-pass-k"><td>pass^k</td><td>同一任务重复 k 次全部成功的概率，按 case 的 C(c,k)/C(n,k) 求平均估计，而不是把总体通过率做 k 次方。衡量可靠性，生产系统更关心它。</td><td>W3 D16</td></tr>
         <tr id="term-pass-at-k"><td>pass@k</td><td>同一任务重复 k 次至少成功一次的概率，随 k 上升。它衡量“多试几次能不能碰到”，不等于单次可靠性。</td><td>W3 L13</td></tr>
-        <tr id="term-trace"><td>Trace</td><td>一次请求的完整调用链：每步的输入、输出、工具、耗时、token、错误。Agent 调试的第一现场。</td><td>W1 L3</td></tr>
+        <tr id="term-trajectory-eval"><td>轨迹评估<span class="en">trajectory eval</span></td><td>对 Agent 运行过程中的工具选择、参数、顺序、审批、证据来源、预算等做判定。用于“路径本身就是需求”的安全、权限、流程与成本约束，默认仍应优先评 outcome。</td><td>W3 L14</td></tr>
+        <tr id="term-flake-rate"><td>抖动率<span class="en">flake rate</span></td><td>同一 case 在多次 trial 中既有成功又有失败的 case 比例。它区分“集中失败”（能力缺口）与“抖动失败”（可靠性问题），是 pass^k 的配套指标。</td><td>W3 L14</td></tr>
+        <tr id="term-release-gate"><td>发布门禁<span class="en">release gate</span></td><td>一组分层的发布条件：完整性 fail closed；安全、回归、可靠性为硬约束；能力用配对检验；成本与抖动为软信号。输出 BLOCK / WARN / PASS，而不是一个总分。</td><td>W3 L14</td></tr>
+        <tr id="term-mcnemar"><td>McNemar 检验<span class="en">McNemar test</span></td><td>同一批 case 上比较两个版本的配对二分检验，只看“baseline 过、candidate 挂”和反向的 discordant pairs。比两个独立百分比更敏感。</td><td>W3 L14</td></tr>
+        <tr id="term-trace"><td>Trace</td><td>一次请求的完整调用链，由 span 组成：每步的输入、输出、工具、耗时、token、错误。Agent 调试与评测的第一现场。</td><td>W1 L3</td></tr>
+        <tr id="term-span"><td>Span</td><td>Trace 中一个有开始和结束时间的操作，例如一次模型调用、一次工具执行、一次 handoff。OpenTelemetry GenAI 约定用 invoke_agent / execute_tool 等 span 名。</td><td>W3 L14</td></tr>
         <tr id="term-observability"><td>可观测性<span class="en">observability</span></td><td>通过日志、指标、trace 回答“系统现在发生了什么、为什么”。Agent 的非确定性让它比传统服务更重要。</td><td>W3 D17</td></tr>
         <tr id="term-guardrail"><td>护栏<span class="en">guardrail</span></td><td>在输入、输出或工具调用前后执行的校验与限制，用于拦截不安全内容、越权操作与格式错误。</td><td>W2/W3</td></tr>
         <tr id="term-least-privilege"><td>最小权限<span class="en">least privilege</span></td><td>只给 Agent 完成任务所需的最小工具与数据权限。写操作应默认拒绝，审批后放行。</td><td>W1 L4</td></tr>
@@ -251,6 +256,7 @@
   <nav class="footer-nav">
     <a href="course-roadmap.html">← 课程路线图</a>
     <a href="../lessons/0013-eval-datasets-judge.html">第 13 课：评测 I</a>
+    <a href="../lessons/0014-trajectory-passk-ci.html">第 14 课：评测 II</a>
     <a class="next" href="eval-checklist.html">评测设计与校准清单 →</a>
   </nav>
 

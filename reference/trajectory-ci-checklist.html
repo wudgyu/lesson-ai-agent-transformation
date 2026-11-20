@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>轨迹、pass^k 与回归门禁清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.85rem 1rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+    break-inside: avoid;
+  }
+  .check-card h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.22rem 0; }
+  .check-grid + h2 { margin-top: 2.4rem; }
+  @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+  .contract {
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--win);
+    border-radius: 0 4px 4px 0;
+    padding: 0.8rem 1rem;
+    margin: 1rem 0 1.4rem;
+    background: var(--win-soft);
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .gate-table td:first-child { font-weight: 650; white-space: nowrap; }
+  .gate-table td { font-size: 0.82rem; }
+  .gate-table .block { color: var(--accent); font-weight: 650; }
+  .gate-table .warn { color: var(--warn); font-weight: 650; }
+  .gate-table .pass { color: var(--win); font-weight: 650; }
+  .stat td:last-child { text-align: right; font-family: var(--mono); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>轨迹、pass^k 与回归门禁清单</h1>
+  <p class="subtitle">答案对不等于做对；平均分高不等于可以发布。</p>
+  <div class="meta">
+    <span>首次建立 2026-11-20</span>
+    <span>配套 Lesson 0014</span>
+    <span>可打印</span>
+  </div>
+
+  <p class="lede">
+    这张清单回答四个问题：任务成功的定义是什么？trace 里必须有什么？
+    pass^k 怎么算、怎么报？一条门禁规则应该 BLOCK 还是 WARN？
+    先记住三句话，再按 trace、grader、failure、reliability、gate 逐项检查。
+  </p>
+
+  <h2 id="model"><span class="num">01</span>三句话心智模型</h2>
+
+  <div class="formula">
+    <strong>outcome 决定对不对</strong> · <strong>trajectory 决定能不能信</strong> · <strong>pass^k 决定稳不稳</strong>
+  </div>
+
+  <ol>
+    <li><strong>默认评 outcome，路径本身是需求时才评 trajectory。</strong>安全、权限、审批、必需证据、预算，是需求；固定的工具顺序通常不是。</li>
+    <li><strong>pass^k 不是 p^k。</strong>按 case 统计 <code>C(c,k)/C(n,k)</code>；同时报 pass@k、flake rate 与 per-case 矩阵，才能区分能力缺口与抖动。</li>
+    <li><strong>门禁是发布契约，不是仪表盘。</strong>完整性 fail closed；安全、回归、可靠性是硬约束；能力用配对检验；成本与抖动是软信号。</li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="label">最容易犯的错</span>
+    <p>
+      看到 contract pass 从 75.0% 升到 77.1%，就认为 candidate 更好。
+      同一份数据里，它的 pass^3 从 75.0% 掉到 43.8%，还有一次未审批重启。
+      总分是投影，不是结论。
+    </p>
+  </div>
+
+  <h2 id="contract"><span class="num">02</span>先定义“任务成功”</h2>
+
+  <div class="contract">success = outcome
+        ∧ evidence
+        ∧ process
+        ∧ safety
+        ∧ efficiency
+
+任一维度失败 → 这条 run 不进入 pass^k 的分子</div>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>五个维度</h4>
+      <ul>
+        <li><strong>outcome</strong>：根因正确；该拒答时拒答。</li>
+        <li><strong>evidence</strong>：必需证据齐全；quote 是实际观测到的原文。</li>
+        <li><strong>process</strong>：必需工具出现；禁用工具不出现；写操作前有 runbook 与审批。</li>
+        <li><strong>safety</strong>：allowlist、tier、digest 绑定、世界状态一致。</li>
+        <li><strong>efficiency</strong>：步数 / 工具 / token 不超预算；无循环、无盲重试。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>定义时的三个问题</h4>
+      <ul>
+        <li>这个维度失败时，用户会受影响吗？</li>
+        <li>它能不能被独立判定，而不是靠“感觉”？</li>
+        <li>有没有一条合法的替代路径会被它误伤？</li>
+      </ul>
+      <p class="small" style="margin:0.4rem 0 0.2rem;">
+        答不上第三个问题，先别把维度设成硬失败。
+      </p>
+    </div>
+  </div>
+
+  <p>
+    相关术语：<a href="glossary.html#term-trajectory-eval">trajectory eval</a>、
+    <a href="glossary.html#term-action-digest">action digest</a>、
+    <a href="glossary.html#term-least-privilege">least privilege</a>。
+  </p>
+
+  <h2 id="trace"><span class="num">03</span>Trace 清单</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>必须记录</h4>
+      <ul>
+        <li><code>trace_id</code> / <code>run_id</code> / <code>conversation_id</code>，并传播到所有下游 span。</li>
+        <li>模型、模型版本、prompt 版本、工具版本。</li>
+        <li>step type：llm / tool / approval / answer；step index。</li>
+        <li>工具名、参数、状态、错误、输出。</li>
+        <li>token in/out、latency、重试次数。</li>
+        <li>审批动作、digest、审批人、时间、TTL。</li>
+        <li>最终答案与<strong>世界状态</strong>（数据库、K8s、工单）。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>必须小心</h4>
+      <ul>
+        <li>工具输出是<strong>不可信数据</strong>；不要当指令执行。</li>
+        <li>trace 里可能有 PII、连接串、真实日志；外部 judge 前脱敏。</li>
+        <li>访问控制与 production 数据同级。</li>
+        <li>span 名保持低基数；变量放 attributes，不要拼进名字。</li>
+        <li>OTel GenAI 约定仍是 Development；pin 版本。</li>
+        <li>没有记录的调用 = 评测器看不见的调用。</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>
+    span 命名参考：<code>invoke_agent {agent.name}</code>、
+    <code>execute_tool {tool.name}</code>；关键属性：
+    <code>gen_ai.operation.name</code>、<code>gen_ai.tool.name</code>、
+    <code>gen_ai.tool.call.id</code>、<code>gen_ai.usage.input_tokens</code>。
+  </p>
+
+  <h2 id="graders"><span class="num">04</span>轨迹评分器清单</h2>
+
+  <table>
+    <thead><tr><th>不变量</th><th>检查</th><th>失败码示例</th></tr></thead>
+    <tbody>
+      <tr><td>工具 allowlist</td><td>只允许任务声明的工具；未知工具 T4 拒绝</td><td><code>unknown_tool</code></td></tr>
+      <tr><td>风险 tier</td><td>动作不超过 <code>max_tier</code></td><td><code>tier_exceeded</code></td></tr>
+      <tr><td>审批绑定</td><td>写操作前有 approved digest，且 digest 匹配动作参数</td><td><code>unapproved_action</code></td></tr>
+      <tr><td>流程顺序</td><td>写操作前有 runbook、身份校验等前置步骤</td><td><code>missing_runbook</code></td></tr>
+      <tr><td>证据溯源</td><td>引用来自答案之前、带对应标记的观测输出</td><td><code>fabricated_evidence</code></td></tr>
+      <tr><td>世界状态</td><td>轨迹里的写操作与环境状态一致</td><td><code>undeclared_side_effect</code></td></tr>
+      <tr><td>预算</td><td>步数、工具数、token 不超过 case 预算</td><td><code>over_step_budget</code></td></tr>
+      <tr><td>重复 / 恢复</td><td>同参调用 ≤2；报错后改参数或换路径才算恢复</td><td><code>tool_loop</code> / <code>blind_retry</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    匹配模式（LangSmith）：<strong>strict</strong> 顺序完全一致；
+    <strong>unordered</strong> 工具集合一致、顺序无关；
+    <strong>subset</strong> 不许额外工具；<strong>superset</strong> 至少包含参考工具。
+    只在“顺序本身是需求”时用 strict；大多数生产 grader 应写成不变量。
+  </p>
+
+  <div class="callout win">
+    <span class="label">每条轨迹 grader 都要有的测试</span>
+    <p>
+      一个完美轨迹、一个明显失败的轨迹、一个<strong>合法的替代路径</strong>。
+      第三个最重要：它证明你不是在测试自己的想象，而是在测试需求。
+    </p>
+  </div>
+
+  <h2 id="failures"><span class="num">05</span>失败分类清单</h2>
+
+  <ol>
+    <li><strong>先读 trace，再看分数。</strong>确认失败是模型、工具、环境还是评测器造成的。</li>
+    <li><strong>每条失败只给一个 primary code</strong>，其余作为附加 flags；否则统计会重复计数。</li>
+    <li><strong>分类要能指向动作</strong>：改 prompt、改工具、改审批、改预算，还是修 grader。</li>
+    <li><strong>保留 2–3 条例子</strong>：run_id、case_id、trial、失败 step、期望行为。</li>
+    <li><strong>记录失败分布</strong>：baseline 与 candidate 的类别计数，比总分更能说明改动的副作用。</li>
+  </ol>
+
+  <table>
+    <thead><tr><th>类别</th><th>典型 code</th><th>下一步</th></tr></thead>
+    <tbody>
+      <tr><td>验证不足</td><td><code>verification_gap</code></td><td>补必需证据、加 evidence grader、改工具输出</td></tr>
+      <tr><td>过度自信</td><td><code>overconfidence</code></td><td>加 abstain 训练/提示、调低置信度、加人工复核</td></tr>
+      <tr><td>步骤重复</td><td><code>step_repetition</code></td><td>加循环检测、改工具返回、改停止条件</td></tr>
+      <tr><td>错误恢复失败</td><td><code>error_recovery_failure</code></td><td>改重试策略、加 fallback、区分可重试错误</td></tr>
+      <tr><td>预算超支</td><td><code>budget_overrun</code></td><td>压缩上下文、减少工具、加 max_steps</td></tr>
+      <tr><td>证据编造</td><td><code>fabricated_evidence</code></td><td>收紧引用协议、加溯源 grader、禁止 paraphrase</td></tr>
+      <tr><td>越权动作</td><td><code>unsafe_action</code></td><td>默认拒绝、审批、digest 绑定、沙箱</td></tr>
+      <tr><td>工具误用</td><td><code>tool_misuse</code></td><td>改工具描述、参数 schema、allowlist</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    MAST 的 3 类 / 14 种失败模式可作为术语参考：
+    system design / specification、inter-agent misalignment、task verification。
+    单 Agent 系统借用其分层，但不要假装是同一套 taxonomy。
+  </p>
+
+  <h2 id="passk"><span class="num">06</span>pass^k 报告清单</h2>
+
+  <div class="formula">
+    pass<sup>k</sup> = <strong>E<sub>task</sub>[ C(c, k) / C(n, k) ]</strong>
+  </div>
+
+  <table class="stat">
+    <thead><tr><th>要报的</th><th>为什么</th><th>示例</th></tr></thead>
+    <tbody>
+      <tr><td>n 与 k</td><td>pass^k 依赖 trial 数；不写 n 就无法复现</td><td>16 cases × 3 trials，pass^3</td></tr>
+      <tr><td>pass^k</td><td>连续 k 次全对的可靠性</td><td>43.8%</td></tr>
+      <tr><td>pass@k</td><td>至少成功一次；与 pass^k 方向相反</td><td>93.8%</td></tr>
+      <tr><td>naive p^k</td><td>只作为对照；不能替代实测</td><td>45.8%</td></tr>
+      <tr><td>95% CI</td><td>小样本不确定性</td><td>[18.8%, 68.8%]</td></tr>
+      <tr><td>all-k fraction</td><td>“所有 trial 都过”的 case 比例</td><td>7/16 = 43.8%</td></tr>
+      <tr><td>flake rate</td><td>区分集中失败与抖动</td><td>8/16 = 50.0%</td></tr>
+      <tr><td>per-case matrix</td><td>读失败模式，而不是只看聚合</td><td>C01 ✓✓✗ · C14 ✗✗✗</td></tr>
+    </tbody>
+  </table>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>集中失败</h4>
+      <ul>
+        <li>一些 case 每次都过，另一些每次都挂。</li>
+        <li>pass^k 不随 k 衰减，接近 pass^1。</li>
+        <li>先补能力：工具、知识、case 覆盖。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>抖动失败</h4>
+      <ul>
+        <li>同一 case 时过时挂。</li>
+        <li>pass^k 随 k 明显下降；flake rate 高。</li>
+        <li>先查环境：工具超时、缓存、解码、随机种子、评测协议。</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>
+    τ-bench 的参考读数：GPT-4o retail pass^1 = 61.2%，pass^8 &lt; 25%。
+    单次看起来能用，连续八次就崩了。面向用户的 Agent 应报 pass^k，而不是 pass@k。
+  </p>
+
+  <h2 id="gate"><span class="num">07</span>发布门禁清单</h2>
+
+  <table class="gate-table">
+    <thead><tr><th>规则</th><th>级别</th><th>检查</th></tr></thead>
+    <tbody>
+      <tr><td>integrity</td><td class="block">BLOCK</td><td>case 数、trial 数、run_id 唯一、无未知 case；失败则 fail closed</td></tr>
+      <tr><td>safety</td><td class="block">BLOCK</td><td>未审批写操作、allowlist 越界、tier 超限、世界状态不一致 = 0</td></tr>
+      <tr><td>regression</td><td class="block">BLOCK</td><td>每个 regression case 的通过数不低于 baseline；零新增回归</td></tr>
+      <tr><td>reliability</td><td class="block">BLOCK</td><td>pass^k ≥ floor；floor 由产品可靠性目标决定</td></tr>
+      <tr><td>capability</td><td class="block">BLOCK</td><td>McNemar 显著退化（p &lt; 0.05 且下降 &gt; 5pp）才阻断</td></tr>
+      <tr><td>cost</td><td class="warn">WARN</td><td>tokens per success 超过 baseline 1.2× 警告；1.75× 阻断</td></tr>
+      <tr><td>flakiness</td><td class="warn">WARN</td><td>flaky case 比例 &gt; 10% 进入观察与修复</td></tr>
+    </tbody>
+  </table>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>门禁实现检查</h4>
+      <ul>
+        <li>数据不完整时是否直接失败，而不是“部分通过”？</li>
+        <li>规则是否有明确的 BLOCK / WARN 区分？</li>
+        <li>每条规则是否有对应的单元测试（能构造越界 fixture）？</li>
+        <li>baseline、模型、prompt、rubric 版本是否 pin 住？</li>
+        <li>报告是否包含 reason code 与失败 trace 链接？</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>CI 分层</h4>
+      <ul>
+        <li><strong>PR</strong>：schema、grader 单测、数据审计、小规模确定性 suite。</li>
+        <li><strong>nightly</strong>：完整 case × k trials；代码 grader 全量，judge 抽样。</li>
+        <li><strong>release</strong>：安全、回归、pass^k、成本与延迟预算。</li>
+        <li>模型升级后重跑 baseline，不直接比较旧分数。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="rollout"><span class="num">08</span>落地顺序</h2>
+
+  <ol>
+    <li>给一次真实 run 写 trace schema：step index、type、tool args/output、tokens、approval、world。</li>
+    <li>先写 outcome grader，再写 evidence 溯源；两者都要有“合法替代路径”测试。</li>
+    <li>把安全约束写成不变量：allowlist、tier、digest、世界状态。</li>
+    <li>加 efficiency 预算与循环/盲重试检测；先 WARN，确认不误伤后再升级。</li>
+    <li>每个 case 跑 n ≥ 3 次；记录 per-case 矩阵与 flake rate。</li>
+    <li>实现 pass^k 的 C(c,k)/C(n,k)，同时算 pass@k 与 naive p^k 做对照。</li>
+    <li>实现 McNemar 与 Wilson / bootstrap 区间；报告里写 n、k、p、CI。</li>
+    <li>实现分层 gate：integrity fail closed；硬约束 BLOCK；软信号 WARN。</li>
+    <li>把 gate 接进 CI；先用一个已知坏版本验证它真的会 BLOCK。</li>
+    <li>每周读 10 条失败 trace，更新失败分类与 case；门禁不是一次性的。</li>
+  </ol>
+
+  <h2 id="java"><span class="num">09</span>和 Java 后端对照</h2>
+
+  <table>
+    <thead><tr><th>本清单</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>Run / Step schema</td><td>DTO + Bean Validation；契约先行</td></tr>
+      <tr><td>trace / span</td><td>分布式链路追踪；traceId 贯穿</td></tr>
+      <tr><td>evidence 溯源</td><td>引用完整性；不能引用未查询的数据</td></tr>
+      <tr><td>action digest</td><td>幂等键 / 审批绑定的动作指纹</td></tr>
+      <tr><td>pass^k</td><td>连续 k 次运行全部通过的可靠性</td></tr>
+      <tr><td>flake rate</td><td>flaky test 治理</td></tr>
+      <tr><td>McNemar</td><td>配对样本的前后对比</td></tr>
+      <tr><td>release gate</td><td>CI 质量门禁 / 发布检查单</td></tr>
+      <tr><td>WARN vs BLOCK</td><td>告警 vs 阻断合并</td></tr>
+    </tbody>
+  </table>
+
+  <p class="small" style="margin-top:2rem;">
+    配套课时：<a href="../lessons/0014-trajectory-passk-ci.html">Lesson 0014 — 评测 II</a> ·
+    前置：<a href="../lessons/0013-eval-datasets-judge.html">Lesson 0013 — 评测 I</a> ·
+    术语：<a href="glossary.html#term-pass-k">pass^k</a>、
+    <a href="glossary.html#term-flake-rate">flake rate</a>、
+    <a href="glossary.html#term-release-gate">release gate</a>、
+    <a href="glossary.html#term-mcnemar">McNemar</a>。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="course-roadmap.html">← 课程路线图</a>
+    <a href="eval-checklist.html">评测设计与校准清单</a>
+    <a href="../lessons/0014-trajectory-passk-ci.html">Lesson 0014 →</a>
+  </nav>
+
+</main>
+</body>
+</html>

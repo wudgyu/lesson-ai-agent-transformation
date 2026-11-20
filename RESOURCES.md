@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-11-17。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-11-20。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -135,7 +135,7 @@
 - [Cognition — Don't Build Multi-Agents](https://cognition.com/blog/dont-build-multi-agents)
   **第 10 课精读（反方）**。共享完整上下文与 agent trace；动作携带隐含决策；Flappy Bird 例子；建议默认单线程线性 Agent，用压缩而非并行切片处理上下文溢出。
 - [Why Do Multi-Agent LLM Systems Fail? (MAST, arXiv:2503.13657)](https://arxiv.org/abs/2503.13657)
-  **第 10 课精读（选段）**。14 种失败模式、3 类（system design / inter-agent misalignment / task verification）；1,600+ 轨迹、7 个框架、0.88 kappa。
+  **第 10 课精读（选段）· 第 14 课（失败分类）**。14 种失败模式、3 类（system design / inter-agent misalignment / task verification）；1,600+ 轨迹、7 个框架、0.88 kappa；多数失败来自系统设计而非底层模型。
 - [ReAct: Synergizing Reasoning and Acting in Language Models (arXiv:2210.03629)](https://arxiv.org/abs/2210.03629)
   ReAct 循环的原始论文。读第 1–2 节即可建立直觉。**第 3 课选读**。
 - [Lilian Weng — LLM Powered Autonomous Agents](https://lilianweng.github.io/posts/2023-06-23-agent/)
@@ -230,8 +230,8 @@
 ### 评测方法与校准
 
 - [Anthropic — Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)
-  **第 13 课精读**。20–50 个真实任务起步、任务无歧义且有参考解、code/model/human grader 取舍、
-  capability vs regression、pass^k、读 transcript、eval saturation、评测团队与维护。
+  **第 13–14 课精读**。20–50 个真实任务起步、任务无歧义且有参考解、code/model/human grader 取舍、
+  capability vs regression、transcript vs outcome、pass^k、读 transcript、eval saturation、评测团队与维护。
 - [Hamel Husain — Your AI Product Needs Evals](https://hamel.dev/blog/posts/evals/)
   **第 13 课精读（前半）**。三层评测（断言 / 人工+模型 / A/B）、从失败中建 case、
   单元断言与 trace 审查；核心主张：失败的 AI 产品通常缺一套可靠评测系统。
@@ -244,9 +244,17 @@
 - [Shankar et al. — Who Validates the Validators? (EvalGen, arXiv:2404.12272)](https://arxiv.org/abs/2404.12272)
   UIST 2024。criteria drift：标准与输出互相塑形；评测集与 rubric 必须迭代，不能一次性定死。
 - [Yao et al. — τ-bench (arXiv:2406.12045)](https://arxiv.org/abs/2406.12045)
-  **第 13–14 课**。用户模拟 + 数据库状态验收；pass^k 可靠性指标；GPT-4o retail pass^1 约 61%，pass^8 低于 25%。
+  **第 14 课精读（pass^k）**。用户模拟 + 数据库状态验收；pass^k = E_task[C(c,k)/C(n,k)]；GPT-4o retail pass^1 = 61.2%，pass^8 < 25%。
 - [Kapoor et al. — AI Agents That Matter (arXiv:2407.01502)](https://arxiv.org/abs/2407.01502)
-  成本受控的 Agent 评测、准确率-成本 Pareto、holdout 与 benchmark overfitting；第 13 课的成本与留出集依据。
+  成本受控的 Agent 评测、准确率-成本 Pareto、holdout 与 benchmark overfitting；第 13–14 课的成本与留出集依据。
+- [LangSmith — Trajectory evals](https://docs.langchain.com/langsmith/trajectory-evals)
+  **第 14 课（轨迹评分）**。strict / unordered / subset / superset 四种匹配模式；`agentevals` 的 trajectory match evaluator 与 LLM-as-judge trajectory evaluator；参考轨迹的适用边界。
+- [OpenAI Agents SDK — Tracing](https://openai.github.io/openai-agents-python/tracing/)
+  **第 14 课（trace schema）**。trace 是 end-to-end operation，span 是有起止时间的 operation；Runner、generation、function tool、handoff、guardrail 的默认 span。
+- [OpenTelemetry — GenAI agent spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md)
+  **第 14 课（trace 语义）**。`invoke_agent {agent.name}`、`execute_tool {tool.name}`、`gen_ai.operation.name`、`gen_ai.tool.call.id`、token 用量；状态为 Development，需 pin 版本。
+- [OpenAI — Trace grading](https://developers.openai.com/api/docs/guides/trace-grading)
+  **第 14 课（轨迹评分对照）**。给 Agent trace 的决策、工具调用、handoff 打结构化分数；从 trace grading 迁移到 dataset eval 的路径。
 - [OpenAI — Evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices)
   指标型 / 人工 / LLM-as-judge 三类 evaluator；Agent 专项类别：指令遵循、工具选择、参数精度、功能正确性、handoff。
 - [OpenAI — Graders](https://developers.openai.com/api/docs/guides/graders)
