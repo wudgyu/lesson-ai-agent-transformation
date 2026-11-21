@@ -240,6 +240,9 @@
         <tr id="term-trace"><td>Trace</td><td>一次请求的完整调用链，由 span 组成：每步的输入、输出、工具、耗时、token、错误。Agent 调试与评测的第一现场。</td><td>W1 L3</td></tr>
         <tr id="term-span"><td>Span</td><td>Trace 中一个有开始和结束时间的操作，例如一次模型调用、一次工具执行、一次 handoff。OpenTelemetry GenAI 约定用 invoke_agent / execute_tool 等 span 名。</td><td>W3 L14</td></tr>
         <tr id="term-observability"><td>可观测性<span class="en">observability</span></td><td>通过日志、指标、trace 回答“系统现在发生了什么、为什么”。Agent 的非确定性让它比传统服务更重要。</td><td>W3 D17</td></tr>
+        <tr id="term-token-ledger"><td>Token 账本<span class="en">token ledger</span></td><td>把每次 inference 的 usage 按 model 价格、cache 状态、失败/重试与业务维度记账。只从叶子 inference span 取数，避免 agent 汇总重复计费。</td><td>W3 L15</td></tr>
+        <tr id="term-cost-per-success"><td>单位成功成本<span class="en">cost per success</span></td><td>总成本除以成功 run 数；分子包含失败调用与重试，分母只放成功任务。回答“做成一件要多少钱”，而不是“跑一次要多少钱”。</td><td>W3 L15</td></tr>
+        <tr id="term-critical-path"><td>关键路径<span class="en">critical path</span></td><td>决定端到端时间的依赖链：父 → 子，顺序兄弟按时间连边，并行兄弟不连边。并行工具的总时长相加会高估墙钟。</td><td>W3 L15</td></tr>
         <tr id="term-guardrail"><td>护栏<span class="en">guardrail</span></td><td>在输入、输出或工具调用前后执行的校验与限制，用于拦截不安全内容、越权操作与格式错误。</td><td>W2/W3</td></tr>
         <tr id="term-least-privilege"><td>最小权限<span class="en">least privilege</span></td><td>只给 Agent 完成任务所需的最小工具与数据权限。写操作应默认拒绝，审批后放行。</td><td>W1 L4</td></tr>
         <tr id="term-prompt-injection"><td>提示词注入<span class="en">prompt injection</span></td><td>攻击者把恶意指令藏在网页、文档、工具返回中，诱导 Agent 偏离原任务或泄露信息。Agent 安全的核心威胁。</td><td>W1 L2 · W3 D18</td></tr>
@@ -257,7 +260,9 @@
     <a href="course-roadmap.html">← 课程路线图</a>
     <a href="../lessons/0013-eval-datasets-judge.html">第 13 课：评测 I</a>
     <a href="../lessons/0014-trajectory-passk-ci.html">第 14 课：评测 II</a>
-    <a class="next" href="eval-checklist.html">评测设计与校准清单 →</a>
+    <a href="../lessons/0015-observability.html">第 15 课：可观测性与成本</a>
+    <a href="eval-checklist.html">评测设计清单</a>
+    <a class="next" href="observability-checklist.html">可观测性与成本清单 →</a>
   </nav>
 
 </main>

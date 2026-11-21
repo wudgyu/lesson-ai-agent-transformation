@@ -1,0 +1,10 @@
+{
+  "active_p95_ms": 15000,
+  "max_active_ms": 20000,
+  "tool_p95_ms": 8000,
+  "approval_p95_ms": 120000,
+  "ttft_p95_ms": 1200,
+  "cost_per_success_usd": 0.02,
+  "cache_hit_rate_min": 0.35,
+  "retry_share_max": 0.05
+}

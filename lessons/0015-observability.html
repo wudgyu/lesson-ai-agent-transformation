@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 15 课 · 可观测性与成本：把一次 run 拆成账单</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .metric-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 0.7rem;
+    margin: 1.2rem 0 1.6rem;
+  }
+  .metric {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.65rem 0.8rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+  }
+  .metric .v {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1.2;
+  }
+  .metric .k {
+    font-size: 0.7rem;
+    color: var(--muted);
+    line-height: 1.4;
+    margin-top: 0.2rem;
+  }
+
+  .waterfall {
+    margin: 1.3rem 0 1.8rem;
+    font-family: var(--sans);
+    font-size: 0.78rem;
+    line-height: 1.5;
+  }
+  .wf-row {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr 3.2rem;
+    gap: 0.55rem;
+    align-items: center;
+    margin: 0.18rem 0;
+  }
+  .wf-label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wf-label.child { padding-left: 0.8rem; color: var(--muted); }
+  .wf-track {
+    position: relative;
+    height: 0.85rem;
+    background: color-mix(in srgb, var(--rule) 35%, transparent);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .wf-bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 2px;
+    background: var(--rule-strong);
+  }
+  .wf-bar.root { background: var(--ink-soft); }
+  .wf-bar.llm { background: var(--note); }
+  .wf-bar.tool { background: var(--win); }
+  .wf-bar.approval { background: var(--warn); }
+  .wf-time {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    color: var(--muted);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .wf-note {
+    margin-top: 0.5rem;
+    font-size: 0.74rem;
+    color: var(--muted);
+  }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.05em 0.32em;
+    white-space: nowrap;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1.2rem 0 1.6rem;
+  }
+  .two-col > div {
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.8rem 0.95rem 0.5rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+  .two-col h4 {
+    margin: 0 0 0.4rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .two-col ul { margin: 0; padding-left: 1.1rem; }
+  .two-col li { margin: 0.22rem 0; }
+  @media (max-width: 700px) {
+    .two-col { grid-template-columns: 1fr; }
+  }
+
+  .ledger {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.65;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--win);
+    border-radius: 0 4px 4px 0;
+    padding: 0.9rem 1rem;
+    margin: 1.2rem 0 1.6rem;
+    white-space: pre-wrap;
+  }
+
+  .trace .pass { color: #8fc79a; }
+  .trace .warn { color: #e0b567; }
+  .trace .block { color: #e58a5e; }
+
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1.2rem 0 1.6rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.8rem 0.95rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+  .check-card h4 {
+    margin: 0 0 0.4rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.2rem 0; }
+  @media (max-width: 700px) {
+    .check-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 第 3 周 · 第 15 课</div>
+  <h1>可观测性与成本：把一次 run 拆成账单</h1>
+  <p class="subtitle">trace 是一等数据；账单不是 token 总数；延迟看 active 与 critical path。</p>
+  <div class="meta">
+    <span>Lesson 0015</span>
+    <span>约 110 分钟</span>
+    <span>阅读 35′ · 测验 6′ · Lab 65′</span>
+    <span>无需 API key · Python ≥ 3.9</span>
+  </div>
+
+  <p class="lede">
+    RepoMedic v0.6 平均每个成功任务花 <strong>$0.021</strong>，一条带审批的 run 墙钟
+    <strong>95 秒</strong>。但拆开 trace 你会发现：其中 <strong>88 秒</strong>在等人审批，
+    模型只占 6 秒；成本最高的那条 run 占了总账单的 <strong>46.5%</strong>，
+    因为 8 轮长上下文把历史消息反复计费。可观测性不是“多打日志”，
+    而是把一次 run 拆成一棵可归属的树，让每一分钱、每一秒、每一次失败
+    都能落到具体的 span 上。
+  </p>
+
+  <div class="metric-strip">
+    <div class="metric"><div class="v">$0.0210</div><div class="k">cost per success</div></div>
+    <div class="metric"><div class="v">22.0s</div><div class="k">active p95（预算 15s）</div></div>
+    <div class="metric"><div class="v">38.9%</div><div class="k">cache hit rate</div></div>
+    <div class="metric"><div class="v">5.4%</div><div class="k">retry share</div></div>
+  </div>
+
+  <p class="small">
+    术语以<a href="../reference/glossary.html">术语表</a>为准：
+    <a href="../reference/glossary.html#term-observability">observability</a>、
+    <a href="../reference/glossary.html#term-trace">trace</a>、
+    <a href="../reference/glossary.html#term-span">span</a>、
+    <a href="../reference/glossary.html#term-token">token</a>、
+    <a href="../reference/glossary.html#term-token-budget">token budget</a>、
+    <a href="../reference/glossary.html#term-sampling">sampling</a>。
+  </p>
+
+  <details class="recall">
+    <summary>90 秒回忆：先别往下看，回答第 14 课的三件事
+      <ol>
+        <li>“任务成功”的五个维度是什么？哪个维度一票否决？</li>
+        <li>pass^k 与 pass@k 分别在回答什么问题？</li>
+        <li>为什么 candidate 的 contract pass 更高，仍然可能被门禁 BLOCK？</li>
+      </ol>
+    </summary>
+    <p><strong>对答案：</strong>
+      <ol>
+        <li>outcome、evidence、process、safety、efficiency；safety 一票否决，不能被平均分抵消。</li>
+        <li>pass^k 问“连续 k 次都成功的概率”，pass@k 问“k 次里至少成功一次的概率”；产品允许重试时看前者。</li>
+        <li>因为门禁不是看总分，而是看安全、回归、可靠性等分层硬约束；总分只是仪表盘。</li>
+      </ol>
+    </p>
+    <p class="small">有一题答不上来？先回 <a href="0014-trajectory-passk-ci.html">第 14 课</a> 补一眼，再回来。</p>
+  </details>
+
+  <div class="toc no-print">
+    <div class="toc-title">本课地图</div>
+    <ol>
+      <li><a href="#why">三个问题：为什么、多少钱、慢在哪</a></li>
+      <li><a href="#trace">Trace 是一棵树</a></li>
+      <li><a href="#otel">Span 契约与 OTel GenAI</a></li>
+      <li><a href="#ledger">Token 账本：账单不是 token 总数</a></li>
+      <li><a href="#cache">缓存、价格版本与缺失数据</a></li>
+      <li><a href="#latency">延迟：wall、active、critical path</a></li>
+      <li><a href="#tail">尾延迟与 fan-out</a></li>
+      <li><a href="#dashboard">面板与门禁</a></li>
+      <li><a href="#sampling">采样、隐私与成本治理</a></li>
+      <li><a href="#quiz">检验一下</a></li>
+      <li><a href="#lab">Lab：10 条 trace、一本账、一道门禁</a></li>
+      <li><a href="#java">和 Java 后端对照</a></li>
+      <li><a href="#reading">本课精读</a></li>
+    </ol>
+  </div>
+
+  <div class="callout win">
+    <span class="label">本课结束时，你能</span>
+    <p>① 看懂一棵 trace 树，并说出每个 span 的 operation、usage 与父子关系；
+    ② 用叶子 inference span 算出一份不重复的 token 账本；
+    ③ 区分 wall / blocked / active / critical path，并给每个 stage 设预算；
+    ④ 设计一张能 fail closed 的可观测性面板，知道哪条该 BLOCK、哪条只是 WARN。</p>
+  </div>
+
+  <h2 id="why"><span class="num">01</span>三个问题：为什么、多少钱、慢在哪<a class="anchor" href="#why">¶</a></h2>
+
+  <p>
+    第 14 课把“任务是否成功”变成了可执行的契约。这一课要回答的是运维层面的三个问题：
+  </p>
+
+  <table>
+    <thead><tr><th>问题</th><th>需要的数据</th><th>典型回答</th></tr></thead>
+    <tbody>
+      <tr><td>这次 run 为什么失败？</td><td>trace：span 树、工具参数、错误、审批</td><td>第三次 <code>query_logs</code> 超时后用了相同参数重试，证据没拿到</td></tr>
+      <tr><td>钱花在哪？</td><td>token 账本：叶子 inference 的 usage × 价格</td><td>46.5% 的成本来自 R06 的 8 轮长上下文，历史被重复计费</td></tr>
+      <tr><td>慢在哪？</td><td>延迟：wall / active / stage union / critical path</td><td>墙钟 95 秒，其中 88 秒在等人审批；模型只有 6 秒</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    这三件事不能靠“日志多打一点”解决。日志是离散事件，缺少父子关系与统一的时间线；
+    trace 把一次 run 组织成<strong>有起止时间的树</strong>，metrics 把大量 run 聚合成
+    可告警的时间序列。日志仍然有用，但它是细节，不是骨架。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">一句话</span>
+    <p>
+      日志告诉你“发生了什么”；trace 告诉你“为什么、花了多少、慢在哪”。
+      没有 trace 的成本数字，只是账单上的一个总数，无法优化。
+    </p>
+  </div>
+
+  <h2 id="trace"><span class="num">02</span>Trace 是一棵树<a class="anchor" href="#trace">¶</a></h2>
+
+  <p>
+    在 OpenAI Agents SDK 的模型里，<strong>trace</strong> 表示一次端到端 workflow，
+    <strong>span</strong> 表示一个有起止时间的 operation；span 有
+    <code>trace_id</code>、<code>parent_id</code>、<code>started_at</code>、
+    <code>ended_at</code> 和 <code>span_data</code>。默认会生成 task、turn、agent、
+    generation、function tool、guardrail、handoff 等 span；也可以用
+    <code>custom_span()</code> 加业务 span。
+    <a href="https://openai.github.io/openai-agents-python/tracing/">OpenAI Agents SDK — Tracing</a>
+  </p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 660 250" role="img" aria-label="一条 RepoMedic trace 的 span 树">
+      <rect class="d-node-accent" x="230" y="16" width="200" height="46" rx="5"></rect>
+      <text class="d-text" x="330" y="36">invoke_agent RepoMedic</text>
+      <text class="d-sub" x="330" y="52">agent · root · 95.0s</text>
+
+      <path class="d-arrow" d="M330 62 L330 88"></path>
+      <path class="d-arrow" d="M330 88 L100 88 L100 112"></path>
+      <path class="d-arrow" d="M330 88 L260 88 L260 112"></path>
+      <path class="d-arrow" d="M330 88 L420 88 L420 112"></path>
+      <path class="d-arrow" d="M330 88 L580 88 L580 112"></path>
+
+      <rect class="d-node-io" x="40" y="112" width="120" height="44" rx="4"></rect>
+      <text class="d-text" x="100" y="131">chat</text>
+      <text class="d-sub" x="100" y="147">llm · 3.0s</text>
+
+      <rect class="d-node" x="200" y="112" width="120" height="44" rx="4"></rect>
+      <text class="d-text" x="260" y="131">execute_tool</text>
+      <text class="d-sub" x="260" y="147">tool · 1.0s</text>
+
+      <rect class="d-node" x="360" y="112" width="120" height="44" rx="4"></rect>
+      <text class="d-text" x="420" y="131">approval</text>
+      <text class="d-sub" x="420" y="147">approval · 88.0s</text>
+
+      <rect class="d-node-io" x="520" y="112" width="120" height="44" rx="4"></rect>
+      <text class="d-text" x="580" y="131">chat</text>
+      <text class="d-sub" x="580" y="147">llm · 3.0s</text>
+
+      <text class="d-label" x="330" y="196">同一棵树上，token、时间、错误都能归因到具体 span</text>
+    </svg>
+    <figcaption>R04 的 trace 树：审批不是“模型慢”，它是独立的 span，应该单独计量。</figcaption>
+  </div>
+
+  <p>
+    把 R04 画成 waterfall，会更直观：
+  </p>
+
+  <div class="waterfall">
+    <div class="wf-row">
+      <span class="wf-label">root</span>
+      <span class="wf-track"><span class="wf-bar root" style="left:0%;width:100%"></span></span>
+      <span class="wf-time">95.0s</span>
+    </div>
+    <div class="wf-row">
+      <span class="wf-label child">chat #1</span>
+      <span class="wf-track"><span class="wf-bar llm" style="left:0%;width:3.16%"></span></span>
+      <span class="wf-time">3.0s</span>
+    </div>
+    <div class="wf-row">
+      <span class="wf-label child">tool</span>
+      <span class="wf-track"><span class="wf-bar tool" style="left:3.16%;width:1.05%"></span></span>
+      <span class="wf-time">1.0s</span>
+    </div>
+    <div class="wf-row">
+      <span class="wf-label child">approval</span>
+      <span class="wf-track"><span class="wf-bar approval" style="left:4.21%;width:92.63%"></span></span>
+      <span class="wf-time">88.0s</span>
+    </div>
+    <div class="wf-row">
+      <span class="wf-label child">chat #2</span>
+      <span class="wf-track"><span class="wf-bar llm" style="left:96.84%;width:3.16%"></span></span>
+      <span class="wf-time">3.0s</span>
+    </div>
+    <p class="wf-note">
+      墙钟 95 秒，但 active 只有 7 秒。审批等待是黄色段；优化模型或工具不会让这条 run 变快。
+    </p>
+  </div>
+
+  <p>
+    在 OTel 的 GenAI 约定里，agent 与工具 span 也有标准名字：
+    <code>invoke_agent {agent.name}</code>、<code>execute_tool {tool.name}</code>，
+    推理 span 的 <code>gen_ai.operation.name</code> 是 <code>chat</code> /
+    <code>text_completion</code> / <code>generate_content</code>。
+    这些名字不是为了好看，而是为了让聚合查询有稳定的维度。
+    <a href="https://github.com/open-telemetry/semantic-conventions-genai">OpenTelemetry — GenAI semantic conventions</a>
+  </p>
+
+  <div class="callout warn">
+    <span class="label">先别急着加字段</span>
+    <p>
+      span 的属性不是越多越好。高基数属性（用户输入、完整 URL、工单号）会撑爆指标存储；
+      敏感内容（prompt、工具参数、输出）默认不应采集。先保证
+      <strong>trace_id / span_id / parent_id / 起止 / operation / status / usage</strong>
+      这七类骨架字段正确，再谈业务维度。
+    </p>
+  </div>
+
+  <h2 id="otel"><span class="num">03</span>Span 契约与 OTel GenAI<a class="anchor" href="#otel">¶</a></h2>
+
+  <p>
+    这一课的数据模型尽量贴近 OpenTelemetry GenAI semantic conventions。
+    2026-11 核验：这套约定仍在独立的
+    <a href="https://github.com/open-telemetry/semantic-conventions-genai">semantic-conventions-genai</a>
+    仓库，状态是 <strong>Development</strong>，不是 Stable。实现要 pin 版本，
+    因为属性名会改；例如旧的 <code>gen_ai.system</code> 已被
+    <code>gen_ai.provider.name</code> 取代。
+  </p>
+
+  <table>
+    <thead><tr><th>属性</th><th>级别</th><th>用途 / 坑</th></tr></thead>
+    <tbody>
+      <tr><td><code>gen_ai.operation.name</code></td><td>Required</td><td><code>chat</code> / <code>invoke_agent</code> / <code>execute_tool</code>；汇总 token 前先按它过滤。</td></tr>
+      <tr><td><code>gen_ai.provider.name</code></td><td>Required</td><td>provider 判别维度；不要与 model 混在一起。</td></tr>
+      <tr><td><code>gen_ai.request.model</code></td><td>Conditional</td><td>价格表按它匹配；别名/路由会让 request 与 response model 不同。</td></tr>
+      <tr><td><code>gen_ai.usage.input_tokens</code></td><td>Recommended</td><td><strong>包含</strong> cache read / cache write / 各模态；不是“未缓存输入”。</td></tr>
+      <tr><td><code>gen_ai.usage.output_tokens</code></td><td>Recommended</td><td><strong>包含</strong> reasoning 与各模态输出。</td></tr>
+      <tr><td><code>gen_ai.usage.cache_read.input_tokens</code></td><td>Recommended</td><td>input 的子集；按 cache 价计费。</td></tr>
+      <tr><td><code>gen_ai.usage.cache_write.input_tokens</code></td><td>Recommended</td><td>input 的子集；部分供应商收写入溢价。</td></tr>
+      <tr><td><code>gen_ai.usage.reasoning.output_tokens</code></td><td>Recommended</td><td>output 的子集；通常按 output 价计费，不要额外再加一次。</td></tr>
+      <tr><td><code>gen_ai.agent.name</code></td><td>Conditional</td><td>低基数；不要用框架类型名 <code>StateGraph</code> 当 agent 名。</td></tr>
+      <tr><td><code>gen_ai.tool.name</code> / <code>gen_ai.tool.call.id</code></td><td>Conditional</td><td>定位一次工具调用；把 tool span 与消息里的 tool_call 对上。</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    metrics 与 spans 的分工也要清楚。OTel 定义了
+    <code>gen_ai.client.operation.duration</code> 直方图与
+    <code>gen_ai.client.inference.usage.input_tokens</code> /
+    <code>output_tokens</code> 等计数器；总量、成本、SLO 应该用 metrics，
+    因为 <strong>metrics 不受 trace sampling 影响</strong>。单次为什么贵、为什么慢，
+    才用 trace。官方文档明确提醒：不要把 <code>gen_ai.usage.*</code>
+    在所有 span 上直接求和——同一批 token 可能同时出现在 agent span、
+    gateway span 与 inference span 上。
+    <a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-token-metrics.md">OTel — Token metrics</a>
+  </p>
+
+  <div class="trace"># 一个 LLM span 的最小形状
+{
+  "trace_id": "R04",
+  "span_id": "R04-l1",
+  "parent_id": "R04-root",
+  "name": "chat medic-large",
+  "kind": "llm",
+  "start_ms": 0,
+  "end_ms": 3000,
+  "status": "ok",
+  "attrs": {
+    "gen_ai.operation.name": "chat",
+    "gen_ai.provider.name": "openai-compatible",
+    "gen_ai.request.model": "medic-large",
+    "gen_ai.usage.input_tokens": 1000,
+    "gen_ai.usage.output_tokens": 120,
+    "gen_ai.usage.cache_read.input_tokens": 600
+  }
+}</div>
+
+  <p>
+    在 OpenAI Agents SDK 里，run 结束后可以从
+    <code>result.context_wrapper.usage</code> 拿到聚合 usage：requests、
+    input/output tokens、cached tokens、reasoning tokens，以及
+    <code>request_usage_entries</code> 的逐请求明细。这个聚合值适合做
+    “这次 run 总共多少”的展示，但做成本归因时仍然要回到每个模型调用。
+    <a href="https://openai.github.io/openai-agents-python/usage/">OpenAI Agents SDK — Usage</a>
+  </p>
+
+  <h2 id="ledger"><span class="num">04</span>Token 账本：账单不是 token 总数<a class="anchor" href="#ledger">¶</a></h2>
+
+  <p>
+    最容易被忽略的一点：<strong>agent span 上的 usage 是汇总</strong>。
+    本课把这套记账方式叫 <a href="../reference/glossary.html#term-token-ledger">token ledger</a>。
+    如果你把所有带 usage 的 span 相加，同一批 token 会被算两遍。
+    lab 里的 R01 就是一个例子：叶子 inference 的 input 是 9,000，
+    但加上根 agent 的汇总后，naive sum 变成 18,000。
+  </p>
+
+  <div class="ledger">billed_input  = input_tokens
+              = uncached_input + cache_read + cache_write
+uncached_input = input_tokens - cache_read - cache_write
+
+input_cost  = uncached_input × input_rate
+            + cache_read    × cache_read_rate
+            + cache_write   × cache_write_rate
+output_cost = output_tokens × output_rate
+total       = input_cost + output_cost</div>
+
+  <p>
+    为什么是“减”而不是“加”？因为 OTel 定义
+    <code>gen_ai.usage.input_tokens</code> 已经<strong>包含</strong> cache read 与
+    cache write；<code>output_tokens</code> 也已经包含 reasoning。
+    cache / reasoning 是子集，不是额外项。把它们再加一次，是最常见的账本 bug。
+  </p>
+
+  <div class="two-col">
+    <div>
+      <h4>账单要回答</h4>
+      <ul>
+        <li><strong>cost per run</strong>：含失败 run，跑一次多少钱。</li>
+        <li><strong><a href="../reference/glossary.html#term-cost-per-success">cost per success</a></strong>：分母只放成功 run，做成一件多少钱。</li>
+        <li><strong>retry cost</strong>：失败调用 + 第 2 次及以后尝试。</li>
+        <li><strong>cache savings</strong>：相对全部按 input 价省了多少。</li>
+      </ul>
+    </div>
+    <div>
+      <h4>不要回答</h4>
+      <ul>
+        <li>“总 token 数”本身。不同模型、不同缓存状态的价格不同。</li>
+        <li>“平均每次调用成本”。失败与长尾会被平均掉。</li>
+        <li>“按 tokenizer 估算的成本”。provider 的 usage 才是账单口径。</li>
+        <li>“用今天的价格回填历史”。价格会变，历史账不能用新价重算。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>失败调用也计费</h3>
+
+  <p>
+    lab 的 R03 是一次超时 + 重试：第一次 <code>chat</code> 等了 15 秒后失败，
+    第二次才成功。失败的那次调用仍然消耗了 1,500 input token；重试又消耗了
+    1,500 input + 160 output。两条加起来是 <strong>$0.0091</strong> 的
+    “失败 + 重试”成本，占这条 run 总成本的 57%。
+    如果只统计成功调用，你会低估失败率高的版本的代价。
+  </p>
+
+  <h3>长上下文会把历史反复计费</h3>
+
+  <p>
+    agent 循环通常每轮都重发完整消息历史。第 1 轮输入 1,200 token，第 2 轮
+    1,800，……第 8 轮 5,400；累计输入是 <strong>26,400</strong>，约为最后一轮的
+    4.9 倍。R06 因此一条 run 就花了 $0.078，占总账单的 46.5%。
+    2026 年的测量研究把这类成本拆成固定前缀、回显的助手历史与工具结果历史；
+    同一段历史会在后续每一步被重新计费。
+    <a href="https://aclanthology.org/2026.realm-1.24.pdf">Where the Tokens Go (REaLM 2026)</a>
+  </p>
+
+  <div class="callout">
+    <span class="label">成本优化的顺序</span>
+    <p>
+      先看 <strong>cost per success</strong>，再看 top run，再看 context growth。
+      如果一条长上下文 run 占了近一半成本，先做 compaction / 摘要 / 工具输出裁剪，
+      比换一个更便宜的模型更有效；换模型可能同时降低能力，抵消收益。
+    </p>
+  </div>
+
+  <h2 id="cache"><span class="num">05</span>缓存、价格版本与缺失数据<a class="anchor" href="#cache">¶</a></h2>
+
+  <p>
+    缓存是成本账本里最容易被算错的部分。OpenAI 的 prompt caching 对相同前缀
+    自动生效，cached input 的价格显著低于未缓存输入；部分模型对 cache write
+    收溢价。usage 里用 <code>cached_tokens</code> 或
+    <code>cache_read.input_tokens</code> 报告命中量。
+    <a href="https://developers.openai.com/api/docs/guides/prompt-caching">OpenAI — Prompt caching</a>
+  </p>
+
+  <p>
+    因此价格表至少要四列：<strong>input、output、cache_read、cache_write</strong>。
+    lab 的 R04 命中 1,500 cache token，缓存节省 $0.003375；R07 四轮都命中
+    95% 的前缀，成本只有 $0.002208，是同等 token 量下最便宜的 run 之一。
+  </p>
+
+  <div class="callout warn">
+    <span class="label">价格要版本化</span>
+    <p>
+      价格表必须有 <code>effective_from</code>。历史 trace 用发生当天生效的价格；
+      价格调整不能回溯已记录的账。LangSmith 的文档也明确：价格表的更新
+      <strong>不会回填</strong>已经记录的 trace。否则你会得到一个“昨天很贵、
+      今天突然变便宜”的假趋势。
+      <a href="https://docs.langchain.com/langsmith/cost-tracking">LangSmith — Cost tracking</a>
+    </p>
+  </div>
+
+  <p>
+    缺失 usage 时怎么办？答案不是估算，而是<strong>标记 unknown，并让面板阻断</strong>。
+    Langfuse 在 2026-11 停止自动 tokenization，理由正是：在 reasoning 与
+    cache 定价下，文本估算会算错，而且会掩盖损坏的 instrumentation。
+    <a href="https://langfuse.com/docs/observability/features/token-and-cost-tracking">Langfuse — Token &amp; cost tracking</a>
+  </p>
+
+  <div class="callout accent">
+    <span class="label">fail closed</span>
+    <p>
+      R08 有一条 inference span 没有 usage。账本把这条 run 的成本标成
+      <strong>lower bound</strong>，审计输出 <code>missing usage</code>，
+      面板直接 BLOCK。先修 instrumentation，再谈成本优化；不要用一个
+      看起来合理的估算把问题藏起来。
+    </p>
+  </div>
+
+  <h2 id="latency"><span class="num">06</span>延迟：wall、active、critical path<a class="anchor" href="#latency">¶</a></h2>
+
+  <p>
+    延迟分析的第一步不是算平均值，而是把时间拆开。这里的关键概念是
+    <a href="../reference/glossary.html#term-critical-path">critical path</a>：
+  </p>
+
+  <div class="ledger">wall_ms    = root span 的 end - start
+blocked_ms = approval span 区间的并集
+active_ms  = wall_ms - blocked_ms
+
+critical path = DAG 最长路径
+  - 节点权重：exclusive = duration - union(直接子 span)
+  - 边：parent → child；顺序执行的兄弟：前一个子树的叶子 → 后一个
+  - 并行兄弟之间没有边，所以不会相加</div>
+
+  <p>
+    R04 的 wall 是 95 秒，approval 是 88 秒，active 只有 7 秒。
+    如果你把 wall 当成“模型延迟”去优化，会改错地方。审批等待是 human latency，
+    应该单独设预算、单独告警；模型/工具的 p95 只统计 active 部分。
+  </p>
+
+  <h3>并行工具不能相加</h3>
+
+  <p>
+    R05 有两个并行工具，各 7 秒，从 2.5 秒同时跑到 9.5 秒。它们的
+    <strong>stage union</strong> 是 7 秒，不是 14 秒；critical path 仍然是
+    12 秒（llm 2.5s + 工具 7s + llm 2.5s）。如果你把每个 span 的 duration
+    直接相加，会得到一个不存在的 19 秒，然后去优化一个不存在的瓶颈。
+  </p>
+
+  <p>
+    critical path 的算法可以记成三句话：
+    <strong>独占时间</strong>（父 span 扣掉子 span 覆盖的区间）、
+    <strong>顺序边</strong>（前一个子树的叶子接到后一个兄弟）、
+    <strong>最长路径</strong>（并行兄弟之间没有边）。lab 的 <code>latency.py</code>
+    就是按这三个规则实现的，75 个测试里有专门覆盖并行工具与嵌套 agent 的 case。
+  </p>
+
+  <h3>预算怎么写</h3>
+
+  <table>
+    <thead><tr><th>指标</th><th>lab 预算</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>active p95</td><td>15.0s</td><td>用户感知的“模型+工具”时间；不含审批等待。</td></tr>
+      <tr><td>单 run active 上限</td><td>20.0s</td><td>防止 p95 达标但个别 run 极慢。</td></tr>
+      <tr><td>tool p95</td><td>8.0s</td><td>工具是常见的尾延迟来源；R10 一个 9 秒工具就把它拖爆。</td></tr>
+      <tr><td>approval p95</td><td>120.0s</td><td>人工审批的 SLO；单独设，避免和模型延迟混在一起。</td></tr>
+      <tr><td>TTFT p95</td><td>1.2s</td><td>流式体验；首 token 慢会让用户觉得“卡住了”。</td></tr>
+      <tr><td>cost per success</td><td>$0.020</td><td>成本信号；超出是 WARN，不单独阻断发布。</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    SLO 的写法也值得注意。Google SRE Workbook 建议把延迟 SLI 写成
+    “低于阈值的请求比例”，例如“95% 的请求 &lt; 15s”，而不是“平均延迟 &lt; 15s”。
+    平均值会让 5% 的慢请求消失；而用户感受到的往往正是那 5%。
+    <a href="https://sre.google/workbook/implementing-slos/">Google SRE Workbook — Implementing SLOs</a>
+  </p>
+
+  <h2 id="tail"><span class="num">07</span>尾延迟与 fan-out<a class="anchor" href="#tail">¶</a></h2>
+
+  <p>
+    agent 的一个特点是 fan-out：一次决策可能并行调用多个工具、检索多个分片、
+    查询多个服务。只要有一个叶子慢，整个 wait-for-all 的步骤就慢。
+    如果单个叶子慢的概率是 <code>p</code>，并行 <code>n</code> 个叶子时，
+    至少一个慢的概率是：
+  </p>
+
+  <div class="formula">
+    <strong>P(slow) = 1 − (1 − p)<sup>n</sup></strong>
+  </div>
+
+  <p>
+    <code>p=1%</code>、<code>n=100</code> 时是 <strong>63.4%</strong>。
+    这就是为什么“每个工具 p99 都达标”不等于“端到端 p99 达标”。
+    Dean 与 Barroso 在《The Tail at Scale》里把这称为 tail-tolerant system：
+    用可预测的整体，去组合不可预测的部件；除了压缩单点延迟，还可以用
+    hedged requests、微分区、选择性复制等策略。
+    <a href="https://research.google/pubs/the-tail-at-scale/">Dean &amp; Barroso — The Tail at Scale</a>
+  </p>
+
+  <p>
+    lab 的 R10 是一个小例子：五个并行工具里四个 0.5 秒、一个 9 秒。
+    平均值只有 2.2 秒，但 stage union 是 9 秒，tool p95 也是 9 秒。
+    如果只看平均，你会以为工具层很快；看 p95，才知道尾延迟在哪。
+  </p>
+
+  <div class="callout warn">
+    <span class="label">重试会放大尾延迟</span>
+    <p>
+      超时重试不是免费的：它增加成本，也增加尾延迟。更糟的是“盲重试”——
+      用相同参数重试一个已经超时的工具，往往只是把同样的慢路径再走一遍。
+      第 14 课的 <code>blind_retry</code> 评分器抓的就是这个行为；第 15 课的账本
+      则把它记成额外的 retry cost。两课要一起看。
+    </p>
+  </div>
+
+  <h2 id="dashboard"><span class="num">08</span>面板与门禁<a class="anchor" href="#dashboard">¶</a></h2>
+
+  <p>
+    一张可观测性面板至少要能回答四类问题：数据可信吗、钱花在哪、慢在哪、
+    哪些异常必须阻断。lab 的 <code>dashboard.py</code> 把它们组织成三层：
+  </p>
+
+  <table>
+    <thead><tr><th>层</th><th>检查</th><th>默认级别</th></tr></thead>
+    <tbody>
+      <tr><td>完整性</td><td>schema / trace 树 / usage 缺失 / agent 汇总一致 / 未知价格</td><td><span class="tag">BLOCK</span></td></tr>
+      <tr><td>延迟</td><td>active p95、单 run active、tool p95、approval p95、TTFT</td><td><span class="tag">BLOCK</span></td></tr>
+      <tr><td>成本</td><td>cost per success、cache hit rate、retry share</td><td><span class="tag">WARN</span></td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    lab 的默认数据故意不干净：R08 缺 usage、R09 汇总不一致、R03/R06 超 active 上限、
+    R10 超 tool p95。所以 <code>dashboard</code> 的结论是 <strong>BLOCK</strong>，
+    进程 exit 1，可以直接接 CI。这不是“lab 坏了”，而是 fail closed 的正常表现。
+  </p>
+
+  <div class="trace">integrity
+  [<span class="block">BLOCK</span>] missing_usage      1 inference span(s) without usage: R08:R08-l2
+  [<span class="block">BLOCK</span>] reconciliation     agent aggregate != sum(inference spans): R09 (input +500, output +0)
+  [<span class="pass">PASS</span>]  unknown_model      every billed model has a price
+latency
+  [<span class="block">BLOCK</span>] latency_budget     global: active_p95_ms 22000.0 &gt; 15000.0
+  [<span class="block">BLOCK</span>] latency_budget     global: tool_p95_ms 9000.0 &gt; 8000.0
+cost
+  [<span class="warn">WARN</span>]  cost_per_success   $0.0210 per success &gt; $0.0200 budget
+  [<span class="warn">WARN</span>]  retry_share        5.4% of cost is failure/retry &gt; 5.0%
+
+active p95 22.0s · cost/success $0.020979 · cache 38.9% · retry share 5.4%
+verdict: BLOCK</div>
+
+  <div class="callout accent">
+    <span class="label">面板不是仪表盘比赛</span>
+    <p>
+      不要把所有指标都设成 BLOCK，那会让门禁变成噪声；也不要把所有指标都设成 WARN，
+      那等于没有门禁。完整性 fail closed；延迟 SLO 是硬约束；成本与抖动先观察，
+      有明确业务契约时再升级为 BLOCK。
+    </p>
+  </div>
+
+  <h2 id="sampling"><span class="num">09</span>采样、隐私与成本治理<a class="anchor" href="#sampling">¶</a></h2>
+
+  <p>
+    trace 可以采样，账单不能。OTel 的 token metrics 明确说明：总量指标不受
+    trace sampling 影响；如果你用采样后的 trace 求和当成本，会随采样率漂移。
+    正确做法是：metrics 算总账，trace 用来解释个别 run。
+  </p>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>采样</h4>
+      <ul>
+        <li>记录采样率，并随 trace 一起存储。</li>
+        <li>错误、审批、高成本 run 优先保留（tail-based sampling）。</li>
+        <li>不要用采样 trace 的总和做财务账单。</li>
+        <li>采样策略变化要能解释指标跳变。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>隐私</h4>
+      <ul>
+        <li>prompt / completion / 工具参数默认不采集。</li>
+        <li>需要内容时单独授权、脱敏、限制保留期。</li>
+        <li>span name 与属性不要放用户输入。</li>
+        <li>ZDR / 合规环境要确认 tracing 是否可用。</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>
+    成本治理也不只是“换便宜模型”。更有效的顺序通常是：
+    看 cost per success → 找 top run → 看 context growth → 做 compaction /
+    工具输出裁剪 / 缓存前缀 → 最后才考虑换模型。第 7 课的 compaction
+    与第 6 课的引用裁剪，都会在这里变成账单上的数字。
+  </p>
+
+  <h2 id="quiz"><span class="num">10</span>检验一下<a class="anchor" href="#quiz">¶</a></h2>
+
+  <p class="small">先自己想，再点选项。答错会给出解释。</p>
+
+  <div class="quiz" data-quiz>
+    <div class="quiz-q" data-answer="b" data-explain="agent span 的 usage 是子调用的汇总；对所有带 usage 的 span 求和会把同一批 token 算两遍。只从叶子 inference span 计费。">
+      <p class="quiz-prompt">agent span 与子 LLM span 都有 usage，应该怎么算？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>全部相加</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>只算叶子</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>只看总数</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>取最大值</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="c" data-explain="cache_read 是 input_tokens 的子集，不是额外 token。公式是 uncached = input - cache_read - cache_write。">
+      <p class="quiz-prompt">cache_read 在账本里属于什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>额外输入</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>输出部分</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>输入子集</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>固定费用</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="a" data-explain="wall 95 秒里 88 秒是审批等待。active 只有 7 秒；优化模型或工具不会让这条 run 明显变快，应该先优化审批流程或并行化。">
+      <p class="quiz-prompt">wall 95 秒、审批 88 秒，先优化什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>审批等待</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>模型延迟</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>工具延迟</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>网络延迟</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="两个 7 秒工具完全并行，stage union 是 7 秒，不是 14 秒；critical path 仍是 12 秒。把并行时长相加会造出一个不存在的瓶颈。">
+      <p class="quiz-prompt">两个 7 秒工具并行，stage union 是多少？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>3.5 秒</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>7 秒</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>14 秒</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>21 秒</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="d" data-explain="缺失 usage 不能估算；估算会算错 reasoning/cache 成本，还会掩盖 instrumentation bug。标记 unknown、把成本标成下界，并让面板 BLOCK。">
+      <p class="quiz-prompt">inference span 缺 usage，应该怎么处理？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>估算补齐</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>忽略不计</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>按均价算</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>标记未知</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="c" data-explain="1 - (1 - 0.01)^100 ≈ 63.4%。单个叶子 1% 的慢，在 100 路 fan-out 下会变成大多数请求都慢；这就是尾延迟放大。">
+      <p class="quiz-prompt">p=1%、fanout=100，至少一个慢的概率？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>约 1%</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>约 10%</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>约 63%</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>约 99%</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-q" data-answer="b" data-explain="cost per success 的分母是成功 run，分子包含所有 run 的成本（包括失败调用和重试）；它回答的是“做成一件要多少钱”，不是“跑一次要多少钱”。">
+      <p class="quiz-prompt">cost per success 的分母是什么？</p>
+      <button class="quiz-opt" data-opt="a"><span class="letter">A</span>所有 run</button>
+      <button class="quiz-opt" data-opt="b"><span class="letter">B</span>成功 run</button>
+      <button class="quiz-opt" data-opt="c"><span class="letter">C</span>失败 run</button>
+      <button class="quiz-opt" data-opt="d"><span class="letter">D</span>总 token</button>
+      <div class="quiz-feedback" hidden></div>
+    </div>
+
+    <div class="quiz-score" aria-live="polite"></div>
+  </div>
+
+  <h2 id="lab"><span class="num">11</span>Lab：10 条 trace、一本账、一道门禁<a class="anchor" href="#lab">¶</a></h2>
+
+  <p>
+    代码在 <a href="../labs/0015-observability/">labs/0015-observability/</a>。
+    这是一个<strong>不调用模型</strong>的 lab：10 条 RepoMedic trace、74 个 span、
+    2 个版本、价格表、延迟预算、账本、dashboard，以及 75 个离线测试。
+    全部标准库，Python ≥ 3.9；在 3.9.25 与 3.12.16 上都跑通。
+  </p>
+
+  <h3>Step 0 · 环境（2 分钟）</h3>
+  <pre><code>cd labs/0015-observability
+python3 --version   # 3.9+ 即可
+# 不需要 pip install；没有第三方依赖</code></pre>
+
+  <h3>Step 1 · 跑 75 个离线测试（5 分钟）</h3>
+  <pre><code>python3 -m unittest test_observability -v</code></pre>
+  <p>
+    应该看到 <code>Ran 75 tests ... OK</code>。重点看这些名字：
+    <code>test_naive_sum_would_double_count</code>、
+    <code>test_missing_usage_is_reported_not_estimated</code>、
+    <code>test_critical_path_parallel_tools</code>、
+    <code>test_human_wait_is_blocked_not_active</code>、
+    <code>test_real_dashboard_is_blocked</code>。
+  </p>
+
+  <h3>Step 2 · 审计数据（5 分钟）</h3>
+  <pre><code>python3 obs_cli.py audit</code></pre>
+  <p>
+    输出应显示 10 条 trace、74 个 span、8/10 成功，以及两个<strong>故意埋下的</strong>
+    instrumentation 问题：R08 缺 usage、R09 汇总比子调用多 500 input。
+    <code>audit: FAILED</code> 是预期结果；先理解为什么失败，再修。
+  </p>
+
+  <h3>Step 3 · 看一条审批 trace（10 分钟）</h3>
+  <pre><code>python3 obs_cli.py trace --id R04</code></pre>
+  <p>
+    回答三个问题：(1) wall、blocked、active 各是多少？(2) 为什么 critical path
+    是 95 秒，而 active critical path 是 7 秒？(3) 为什么 billed usage 只有
+    2,600 input，而不是 5,200？把答案写下来，再去看 <code>latency.py</code> 的
+    <code>analyze_trace</code>。
+  </p>
+
+  <h3>Step 4 · 读账本（10 分钟）</h3>
+  <pre><code>python3 obs_cli.py cost</code></pre>
+  <p>
+    重点看 R06、R03 与 R08。R06 为什么占总成本 46.5%？R03 的失败调用与重试
+    如何进入 <code>retry cost</code>？R08 为什么带 <code>*</code>？
+    再跑一次：
+  </p>
+  <pre><code>python3 -c "from pathlib import Path; from trace_schema import load_traces; from ledger import Ledger; from pricing import PriceBook; t=load_traces(Path('traces.jsonl')); l=Ledger(t, PriceBook.from_path(Path('pricing.json'))); print(l.context_growth([x for x in t if x.trace_id=='R06'][0]))"</code></pre>
+  <p>
+    你会看到 8 轮、first 1,200 → last 5,400、total input 26,400。
+    这正是长上下文“历史被反复计费”的账单形态。
+  </p>
+
+  <h3>Step 5 · 读延迟（10 分钟）</h3>
+  <pre><code>python3 obs_cli.py latency</code></pre>
+  <p>
+    重点比较 R05、R10 与 R04：R05 的两个 7 秒工具并行为什么不是 14 秒？
+    R10 的平均工具延迟不高，为什么 tool p95 是 9 秒？R04 的 approval p95
+    为什么是 88 秒，却不一定该阻断模型发布？
+  </p>
+
+  <h3>Step 6 · 跑门禁（10 分钟）</h3>
+  <pre><code>python3 obs_cli.py dashboard</code></pre>
+  <p>
+    输出 <code>verdict: BLOCK</code>，exit 1。把每条 BLOCK / WARN 归类：
+    哪条是数据完整性问题？哪条是延迟 SLO？哪条只是成本观察项？
+    如果只允许你修一个，先修哪条？为什么？
+  </p>
+
+  <h3>Step 7 · 动手改一个假设（10 分钟）</h3>
+  <p>三选一：</p>
+  <ul>
+    <li>给 R08 的缺失 span 补一个合理 usage，重新生成 fixtures，看 dashboard 的哪些告警消失、哪些还在。问自己：真实系统里应该改数据还是改 instrumentation？</li>
+    <li>把 R09 的 <code>root_input_delta</code> 改成 0，重跑 <code>audit</code>，观察 reconciliation 从 BLOCK 变 PASS。</li>
+    <li>把 <code>budgets.json</code> 的 <code>active_p95_ms</code> 放宽到 25,000，跑 <code>dashboard</code>。这是“达标了”，还是“把门禁调松了”？</li>
+  </ul>
+
+  <h3>Step 8 · 成功标准</h3>
+  <ul class="checklist" data-persist="lesson15-lab">
+    <li><label><input type="checkbox"><span>75 个测试全绿，能解释 schema / pricing / ledger / latency / dashboard 各抓什么</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 agent span 的 usage 为什么不能与子 LLM span 相加</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 R08 的成本为什么是下界，以及为什么不能估算</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 R03 的失败调用与重试如何进入成本</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 R04 的 wall / blocked / active / critical path 四个数</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 R05 的 stage union 为什么不是两个工具时长之和</span></label></li>
+    <li><label><input type="checkbox"><span>能解释 R10 的 p95 为什么被一个慢工具拖高</span></label></li>
+    <li><label><input type="checkbox"><span>能说出 dashboard 每条 BLOCK / WARN 的依据，并给出修复顺序</span></label></li>
+    <li><label><input type="checkbox"><span>能把这个 lab 的 trace / 账本 / 预算映射到 Java 的链路追踪、账单与 SLO</span></label></li>
+  </ul>
+
+  <h2 id="java"><span class="num">12</span>和 Java 后端对照<a class="anchor" href="#java">¶</a></h2>
+
+  <table>
+    <thead><tr><th>本课概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>trace / span</td><td>分布式链路追踪；traceId 贯穿请求，spanId / parentSpanId 建树</td></tr>
+      <tr><td><code>gen_ai.operation.name</code></td><td>接口/操作名；指标聚合的维度</td></tr>
+      <tr><td>token 账本</td><td>计费/成本中心；按 tenant、endpoint、model 分摊</td></tr>
+      <tr><td>cache read / write</td><td>缓存命中价与回源价；命中率与回源成本</td></tr>
+      <tr><td>cost per success</td><td>单位业务成功成本，而不是单次请求成本</td></tr>
+      <tr><td>wall / blocked / active</td><td>服务处理时间 vs 等待下游/人工的时间</td></tr>
+      <tr><td>critical path</td><td>关键路径法；并行调用不能简单相加</td></tr>
+      <tr><td>p95 / p99</td><td>延迟 SLO；平均值会掩盖长尾</td></tr>
+      <tr><td>dashboard gate</td><td>发布门禁；完整性 fail closed，SLO 硬约束，成本软信号</td></tr>
+      <tr><td>sampling</td><td>链路采样；指标不能采样后再当总量</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    最大的认知转变是：<strong>可观测性不是 AI 特有的“看 prompt”，它就是软件工程里的
+    链路追踪、计费、SLO 与发布门禁。</strong>你在 Java 里做过的 traceId 传播、
+    Micrometer 指标、成本中心、p95 告警、灰度门禁，全都能直接迁移；
+    缺的只是把它们对准<strong>非确定性的模型调用与按 token 计价的成本</strong>。
+  </p>
+
+  <div class="source-card" id="reading">
+    <div class="label">本课精读</div>
+    <h3>OpenTelemetry — GenAI semantic conventions</h3>
+    <p>
+      这是本课属性名与语义的来源。重点读三部分：<strong>agent / inference / tool span</strong>
+      的命名与必需属性；<strong>token usage 属性</strong>为什么 cache / reasoning 是子集；
+      以及 <strong>token metrics</strong> 为什么强调“不要在所有 span 上直接求和”。
+      读的时候 pin 一个版本；这套约定仍是 Development，名称会变。
+    </p>
+    <p>
+      <a href="https://github.com/open-telemetry/semantic-conventions-genai">github.com/open-telemetry/semantic-conventions-genai</a>
+    </p>
+    <p class="small">
+      选读：<a href="https://openai.github.io/openai-agents-python/tracing/">OpenAI Agents SDK — Tracing</a>（trace / span / processors）·
+      <a href="https://openai.github.io/openai-agents-python/usage/">OpenAI Agents SDK — Usage</a>（<code>context_wrapper.usage</code>）·
+      <a href="https://docs.langchain.com/langsmith/cost-tracking">LangSmith — Cost tracking</a>（usage metadata 与价格表）·
+      <a href="https://langfuse.com/docs/observability/features/token-and-cost-tracking">Langfuse — Token &amp; cost tracking</a>（缺失 usage 策略）·
+      <a href="https://research.google/pubs/the-tail-at-scale/">Dean &amp; Barroso — The Tail at Scale</a>（尾延迟放大）·
+      <a href="https://sre.google/workbook/implementing-slos/">Google SRE Workbook — Implementing SLOs</a>（延迟 SLI）·
+      <a href="https://developers.openai.com/api/docs/guides/prompt-caching">OpenAI — Prompt caching</a>（cached input）·
+      <a href="https://aclanthology.org/2026.realm-1.24.pdf">Where the Tokens Go (REaLM 2026)</a>（轨迹成本解剖）
+    </p>
+  </div>
+
+  <p class="small center no-print">
+    打印版：<a href="../reference/observability-checklist.html">Tracing、成本与延迟预算清单</a> ·
+    设计 span、算账本、设预算时逐项过一遍。
+  </p>
+
+  <div class="callout accent">
+    <span class="label">卡住了？</span>
+    <p>
+      回到终端问你的老师：“lesson 0015 里，R04 的 wall 是 95 秒，为什么
+      active 只有 7 秒？如果我要把 active p95 从 22 秒降到 15 秒，应该先改
+      R06 的上下文、R10 的慢工具，还是 R03 的重试？”
+      或者把 <code>python3 obs_cli.py dashboard</code> 的输出贴过来，
+      我们一起把每条 BLOCK 对应到具体的 trace、span 与修复动作。
+    </p>
+  </div>
+
+  <p class="small center no-print" style="margin-top:2.2rem;">
+    下一课：安全与权限——注入、沙箱、最小权限、guardrail。
+  </p>
+
+  <nav class="footer-nav">
+    <a href="0014-trajectory-passk-ci.html">← 第 14 课：评测 II</a>
+    <a href="../reference/course-roadmap.html">课程路线图</a>
+    <a href="../reference/glossary.html">术语表</a>
+    <span class="next disabled">第 16 课：安全与权限（即将解锁）</span>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

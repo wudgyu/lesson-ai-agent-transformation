@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracing、成本与延迟预算清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.85rem 1rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+    break-inside: avoid;
+  }
+  .check-card h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.22rem 0; }
+  .check-grid + h2 { margin-top: 2.4rem; }
+  @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+  .contract {
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--win);
+    border-radius: 0 4px 4px 0;
+    padding: 0.8rem 1rem;
+    margin: 1rem 0 1.4rem;
+    background: var(--win-soft);
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .gate-table td:first-child { font-weight: 650; white-space: nowrap; }
+  .gate-table td { font-size: 0.82rem; }
+  .gate-table .block { color: var(--accent); font-weight: 650; }
+  .gate-table .warn { color: var(--warn); font-weight: 650; }
+  .gate-table .pass { color: var(--win); font-weight: 650; }
+  .stat td:last-child { text-align: right; font-family: var(--mono); white-space: nowrap; }
+  .attr-table td:first-child { font-family: var(--mono); font-size: 0.76rem; white-space: nowrap; }
+  .attr-table td:nth-child(2) { font-family: var(--mono); font-size: 0.72rem; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>Tracing、成本与延迟预算清单</h1>
+  <p class="subtitle">trace 是一等数据；账单不是 token 总数；延迟看 active 与 critical path。</p>
+  <div class="meta">
+    <span>首次建立 2026-11-21</span>
+    <span>配套 Lesson 0015</span>
+    <span>可打印</span>
+  </div>
+
+  <p class="lede">
+    这张清单回答四个问题：一次 run 的 trace 里必须有什么？token 账单怎么算才不重复？
+    延迟预算该按 wall 还是 active？哪些异常必须阻断发布？先记住三句话，再按
+    trace、账本、延迟、面板、采样逐项检查。
+  </p>
+
+  <h2 id="model"><span class="num">01</span>三句话心智模型</h2>
+
+  <div class="formula">
+    <strong>trace 是一等数据</strong> · <strong>账单按叶子 inference 计</strong> · <strong>延迟看 active 与 critical path</strong>
+  </div>
+
+  <ol>
+    <li><strong>先有树，再有指标。</strong>没有父子关系、起止时间与 operation 归属，token 与耗时都无法归因；日志再多也只是文本。</li>
+    <li><strong>agent span 的 usage 是汇总，不是账单行。</strong>只从叶子 inference span 计费；对所有带 usage 的 span 求和会把同一批 token 算两遍。</li>
+    <li><strong>wall ≠ active ≠ critical path。</strong>wall 含审批等待；active 扣掉审批；critical path 是决定结束时间的依赖链，并行工具不能相加。</li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="label">最容易犯的错</span>
+    <p>
+      看到 agent span 上有 <code>gen_ai.usage.input_tokens</code>，又看到每个 LLM 子 span 上也有，
+      就把它们全部加起来。结果是成本翻倍，还找不到原因。先问：这个 usage 是“汇总”还是“本次调用”？
+    </p>
+  </div>
+
+  <h2 id="trace"><span class="num">02</span>Trace 清单</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>每个 span 必须有</h4>
+      <ul>
+        <li><code>trace_id</code>：贯穿一次 run。</li>
+        <li><code>span_id</code> / <code>parent_id</code>：能重建树。</li>
+        <li><code>name</code>：低基数、可聚合；不要把用户输入塞进名字。</li>
+        <li><code>kind</code>：agent / llm / tool / approval / retrieval / guardrail。</li>
+        <li><code>start_ms</code> / <code>end_ms</code>：同一时钟源；子区间落在父区间内。</li>
+        <li><code>status</code>：ok / error；错误要有 <code>error.type</code>。</li>
+        <li><code>operation.name</code>：invoke_agent / chat / execute_tool / retrieval。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>一次 agent run 还必须有</h4>
+      <ul>
+        <li>run / conversation / tenant / case 的关联 ID。</li>
+        <li>model、prompt 版本、agent 版本、工具版本。</li>
+        <li>工具名、调用 ID、参数摘要、状态、错误。</li>
+        <li>usage：input / output / cache_read / cache_write / reasoning。</li>
+        <li>审批：动作、digest、审批人、决定、等待时长。</li>
+        <li>最终答案与<strong>世界状态</strong>（数据库、K8s、工单）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout">
+    <span class="label">隐私默认值</span>
+    <p>
+      不要把完整 prompt / completion / 工具参数默认写进 span。OTel 把
+      <code>gen_ai.input.messages</code>、<code>gen_ai.output.messages</code>、
+      <code>gen_ai.system_instructions</code>、<code>gen_ai.tool.definitions</code>
+      定义为 opt-in。默认只记元数据；需要采样内容时先脱敏，再单独授权。
+    </p>
+  </div>
+
+  <h2 id="otel"><span class="num">03</span>OpenTelemetry GenAI 属性速查</h2>
+
+  <p>
+    2026-11 核验：GenAI 约定仍在独立仓库
+    <a href="https://github.com/open-telemetry/semantic-conventions-genai">semantic-conventions-genai</a>，
+    状态为 <strong>Development</strong>。实现时要 pin 版本；属性名会变。
+  </p>
+
+  <table class="attr-table">
+    <thead><tr><th>属性</th><th>级别</th><th>用途 / 注意</th></tr></thead>
+    <tbody>
+      <tr><td><code>gen_ai.operation.name</code></td><td>Required</td><td><code>chat</code> / <code>text_completion</code> / <code>embeddings</code> / <code>invoke_agent</code> / <code>execute_tool</code> / <code>retrieval</code>。汇总 token 时先按它过滤。</td></tr>
+      <tr><td><code>gen_ai.provider.name</code></td><td>Required</td><td>替代旧的 <code>gen_ai.system</code>；例：<code>openai</code>、<code>anthropic</code>、<code>aws.bedrock</code>。</td></tr>
+      <tr><td><code>gen_ai.request.model</code></td><td>Conditional</td><td>请求的模型名；价格表按它匹配。</td></tr>
+      <tr><td><code>gen_ai.response.model</code></td><td>Recommended</td><td>实际响应的模型名；可能因路由/别名不同。</td></tr>
+      <tr><td><code>gen_ai.usage.input_tokens</code></td><td>Recommended</td><td><strong>包含</strong> cache read / cache write / 各模态；不是“未缓存输入”。</td></tr>
+      <tr><td><code>gen_ai.usage.output_tokens</code></td><td>Recommended</td><td><strong>包含</strong> reasoning 与各模态输出。</td></tr>
+      <tr><td><code>gen_ai.usage.cache_read.input_tokens</code></td><td>Recommended</td><td>input 的子集；按 cache 价计费。</td></tr>
+      <tr><td><code>gen_ai.usage.cache_write.input_tokens</code></td><td>Recommended</td><td>input 的子集；部分供应商收写入溢价。</td></tr>
+      <tr><td><code>gen_ai.usage.reasoning.output_tokens</code></td><td>Recommended</td><td>output 的子集；通常按 output 价计费，不要额外再加一次。</td></tr>
+      <tr><td><code>gen_ai.agent.name</code></td><td>Conditional</td><td>低基数；不要用 <code>StateGraph</code> 这类框架类型名。</td></tr>
+      <tr><td><code>gen_ai.tool.name</code></td><td>Conditional</td><td>工具名；与 <code>gen_ai.tool.call.id</code> 一起定位一次调用。</td></tr>
+      <tr><td><code>gen_ai.tool.call.id</code></td><td>Conditional</td><td>把 tool span 与消息里的 tool_call 对上。</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout accent">
+    <span class="label">指标 vs span</span>
+    <p>
+      总量、成本、SLO 用 metrics（<code>gen_ai.client.inference.usage.*</code> 计数器与
+      <code>gen_ai.client.operation.duration</code> 直方图）；单次为什么贵、为什么慢用 trace。
+      metrics 不受 trace sampling 影响，span 会。不要拿“采样后的 trace 总和”当账单。
+    </p>
+  </div>
+
+  <h2 id="ledger"><span class="num">04</span>Token 账本</h2>
+
+  <div class="contract">billed_input  = input_tokens
+              = uncached_input + cache_read + cache_write
+uncached_input = input_tokens - cache_read - cache_write
+
+input_cost  = uncached_input × input_rate
+            + cache_read    × cache_read_rate
+            + cache_write   × cache_write_rate
+output_cost = output_tokens × output_rate
+total       = input_cost + output_cost</div>
+
+  <p>
+    <strong>只对叶子 inference span 求和。</strong>agent span 的 usage 是它下面所有
+    LLM 调用的汇总；subagent、gateway、framework 层也可能重复上报。
+    OTel 明确提醒：不要在所有 span 上直接 <code>sum(gen_ai.usage.*)</code>，
+    要先按 <code>gen_ai.operation.name</code> 过滤，否则同一批 token 会被多层重复计算。
+  </p>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>计费前的五个检查</h4>
+      <ul>
+        <li>这个 span 是叶子 inference 吗？</li>
+        <li>usage 是 provider 报的，还是 tokenizer 估的？</li>
+        <li>cache_read / cache_write 是 input 的子集吗？</li>
+        <li>失败调用有没有 usage？失败也要计费。</li>
+        <li>用的价格是 run 发生当天生效的版本吗？</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>成本口径</h4>
+      <ul>
+        <li><strong>cost per run</strong>：含失败 run，回答“跑一次要多少钱”。</li>
+        <li><strong>cost per success</strong>：分母只放成功 run，回答“做成一件要多少钱”。</li>
+        <li><strong>retry cost</strong>：失败调用 + 第 2 次及以后尝试。</li>
+        <li><strong>cache savings</strong>：相对“全部按 input 价”省下的钱；写入溢价可能抵消。</li>
+        <li><strong>context growth</strong>：每轮重发的历史会被反复计费，累计输入可能接近 O(T²)。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="label">缺失 usage 时</span>
+    <p>
+      不要用 tokenizer 估一个数填进去。显示 <code>unknown</code>，把成本标成下界，
+      并让面板 BLOCK。估算会把 instrumentation 的 bug 变成“看起来合理的账单”。
+      Langfuse 2026-11 已明确停止自动 tokenization，原因正是估算在 reasoning / cache 定价下会算错。
+    </p>
+  </div>
+
+  <h2 id="latency"><span class="num">05</span>延迟预算</h2>
+
+  <div class="contract">wall_ms   = root span 的 end - start
+blocked_ms = approval span 区间的并集
+active_ms = wall_ms - blocked_ms
+
+critical path = DAG 最长路径
+  - 节点权重：exclusive = duration - union(直接子 span)
+  - 边：parent → child；顺序执行的兄弟：前一个子树的叶子 → 后一个
+  - 并行兄弟之间没有边，所以不会相加</div>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>必须分开报</h4>
+      <ul>
+        <li><strong>wall</strong>：用户实际等待。</li>
+        <li><strong>blocked</strong>：等人审批 / 等外部系统。</li>
+        <li><strong>active</strong>：模型 + 工具 + 编排的活跃时间。</li>
+        <li><strong>TTFT</strong>：首 token 时间；流式体验的关键。</li>
+        <li><strong>p50 / p95 / p99</strong>：不要只报平均。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>预算怎么写</h4>
+      <ul>
+        <li>SLO 写成“百分比 × 阈值”，例如“95% 的 active run &lt; 15s”。</li>
+        <li>每个 stage 一条预算：llm、tool、approval、TTFT。</li>
+        <li>单 run 上限与全局 p95 分开；长尾会被平均值藏住。</li>
+        <li>审批等待单独设预算；不要混进模型延迟。</li>
+        <li>预算超了先看 critical path，不要先怪模型。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout accent">
+    <span class="label">尾延迟会被 fan-out 放大</span>
+    <p>
+      单个叶子慢的概率是 <code>p</code>，并行 <code>n</code> 个叶子时，
+      至少一个慢的概率是 <code>1 − (1 − p)<sup>n</sup></code>。
+      <code>p=1%</code>、<code>n=100</code> 时是 63.4%。所以“每个工具 p99 都达标”
+      不等于“端到端 p99 达标”；要按 trace 的 critical path 看，而不是按单个 span 看。
+    </p>
+  </div>
+
+  <h2 id="gate"><span class="num">06</span>面板与门禁</h2>
+
+  <table class="gate-table">
+    <thead><tr><th>检查</th><th>默认级别</th><th>依据</th></tr></thead>
+    <tbody>
+      <tr><td>trace 树 / schema 不完整</td><td><span class="block">BLOCK</span></td><td>无法归因；完整性 fail closed。</td></tr>
+      <tr><td>inference span 缺 usage</td><td><span class="block">BLOCK</span></td><td>成本不可解释；估算会掩盖 bug。</td></tr>
+      <tr><td>agent 汇总 ≠ 子调用之和</td><td><span class="block">BLOCK</span></td><td>账本口径冲突；先修数据。</td></tr>
+      <tr><td>model 无价格 / 价格未生效</td><td><span class="block">BLOCK</span></td><td>无法计价。</td></tr>
+      <tr><td>active p95 / 单 run active 超预算</td><td><span class="block">BLOCK</span></td><td>延迟是发布契约（按产品定）。</td></tr>
+      <tr><td>cost per success 超预算</td><td><span class="warn">WARN</span></td><td>成本是重要信号，但不单独阻断。</td></tr>
+      <tr><td>cache hit rate 低</td><td><span class="warn">WARN</span></td><td>先确认负载是否可缓存，再优化。</td></tr>
+      <tr><td>retry share 高</td><td><span class="warn">WARN</span></td><td>查失败原因；可能同时是可靠性问题。</td></tr>
+      <tr><td>trace sampling 开启但用于账单</td><td><span class="block">BLOCK</span></td><td>采样后的总和不是总成本；用 metrics。</td></tr>
+    </tbody>
+  </table>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>面板至少四个视图</h4>
+      <ul>
+        <li><strong>trace 树</strong>：一次 run 的 waterfall 与 critical path。</li>
+        <li><strong>成本</strong>：by run / by arm / by model / by step；cost per success。</li>
+        <li><strong>延迟</strong>：active p50/p95/p99；stage 分解；TTFT。</li>
+        <li><strong>可靠性</strong>：错误率、retry share、missing usage、reconcile 失败。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>告警不要只看日总额</h4>
+      <ul>
+        <li>用量突增可能是业务增长，也可能是 retry storm。</li>
+        <li>按成功任务成本告警，比按总花费告警更接近价值。</li>
+        <li>预算按“烧钱速率”与“剩余预算”双窗口看。</li>
+        <li>每次价格表更新都记录生效日期，不回溯历史。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="sampling"><span class="num">07</span>采样、隐私与缺失数据</h2>
+
+  <ul class="checklist">
+    <li><label><input type="checkbox"><span>trace 可以采样；用于计费的 metrics 不能采样。</span></label></li>
+    <li><label><input type="checkbox"><span>采样率随 trace 一起记录；否则无法把样本外推到总体。</span></label></li>
+    <li><label><input type="checkbox"><span>prompt / completion / 工具参数默认不采集；需要时单独授权并脱敏。</span></label></li>
+    <li><label><input type="checkbox"><span>tenant、user、case 等业务标识与 trace 关联，但不要写进 span name。</span></label></li>
+    <li><label><input type="checkbox"><span>缺失 usage 标记为 unknown，并进入 BLOCK；不要静默估算。</span></label></li>
+    <li><label><input type="checkbox"><span>价格表版本化；历史 trace 使用发生时的价格。</span></label></li>
+    <li><label><input type="checkbox"><span>长上下文 agent 记录每轮 input token，观察 O(T²) 的重复计费。</span></label></li>
+    <li><label><input type="checkbox"><span>失败调用与重试单独记账，不藏在成功调用里。</span></label></li>
+  </ul>
+
+  <h2 id="pitfalls"><span class="num">08</span>七个常见坑</h2>
+
+  <ol>
+    <li><strong>把所有带 usage 的 span 相加。</strong>agent + subagent + gateway + LLM 多层重复；只算叶子 inference。</li>
+    <li><strong>把 cache_read 当额外 token。</strong>它是 input 的子集；公式是 <code>uncached = input − cache_read − cache_write</code>。</li>
+    <li><strong>把 reasoning token 再加一次。</strong>它通常已包含在 output 里；先看供应商口径。</li>
+    <li><strong>用估算补缺失 usage。</strong>估算在 reasoning / cache 定价下会错，而且会掩盖 instrumentation bug。</li>
+    <li><strong>把并行工具时长相加。</strong>两个 7 秒并行不是 14 秒；看 union 与 critical path。</li>
+    <li><strong>把审批等待算进模型延迟。</strong>wall 95 秒、active 7 秒时，优化模型没有意义。</li>
+    <li><strong>用今天的价格重算历史账单。</strong>价格会变；按 trace 发生日期选择生效版本。</li>
+  </ol>
+
+  <h2 id="java"><span class="num">09</span>和 Java 后端对照</h2>
+
+  <table>
+    <thead><tr><th>本课概念</th><th>Java 后端对应</th></tr></thead>
+    <tbody>
+      <tr><td>trace / span</td><td>分布式链路追踪；traceId 贯穿请求，spanId / parentSpanId 建树</td></tr>
+      <tr><td><code>gen_ai.operation.name</code></td><td>接口/操作名；指标聚合的维度</td></tr>
+      <tr><td>token 账本</td><td>计费/成本中心；按 tenant、endpoint、model 分摊</td></tr>
+      <tr><td>cache read / write</td><td>缓存命中价与回源价；命中率与回源成本</td></tr>
+      <tr><td>cost per success</td><td>单位业务成功成本，而不是单次请求成本</td></tr>
+      <tr><td>active / blocked</td><td>服务处理时间 vs 等待下游/人工的时间</td></tr>
+      <tr><td>critical path</td><td>关键路径法；并行调用不能简单相加</td></tr>
+      <tr><td>p95 / p99</td><td>延迟 SLO；平均值会掩盖长尾</td></tr>
+      <tr><td>dashboard gate</td><td>发布门禁；完整性 fail closed，SLO 硬约束，成本软信号</td></tr>
+      <tr><td>sampling</td><td>链路采样；指标不能采样后再当总量</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="reading"><span class="num">10</span>一手资料</h2>
+
+  <ul>
+    <li><a href="https://github.com/open-telemetry/semantic-conventions-genai">OpenTelemetry — GenAI semantic conventions</a>：spans、metrics、token 属性；本课精读。</li>
+    <li><a href="https://openai.github.io/openai-agents-python/tracing/">OpenAI Agents SDK — Tracing</a>：trace / span、默认 span 类型、processors 与 flush。</li>
+    <li><a href="https://openai.github.io/openai-agents-python/usage/">OpenAI Agents SDK — Usage</a>：<code>result.context_wrapper.usage</code> 与 per-request breakdown。</li>
+    <li><a href="https://docs.langchain.com/langsmith/cost-tracking">LangSmith — Cost tracking</a>：usage metadata、价格表、cache / reasoning 分项。</li>
+    <li><a href="https://langfuse.com/docs/observability/features/token-and-cost-tracking">Langfuse — Token &amp; cost tracking</a>：usage_details / cost_details、缺失 usage 策略。</li>
+    <li><a href="https://research.google/pubs/the-tail-at-scale/">Dean &amp; Barroso — The Tail at Scale</a>：fan-out 放大尾延迟、hedged requests。</li>
+    <li><a href="https://sre.google/workbook/implementing-slos/">Google SRE Workbook — Implementing SLOs</a>：延迟 SLI 用“低于阈值的比例”，不要用平均。</li>
+    <li><a href="https://developers.openai.com/api/docs/guides/prompt-caching">OpenAI — Prompt caching</a>：cached input、cache write、usage 字段。</li>
+  </ul>
+
+  <p class="small center no-print" style="margin-top:2.2rem;">
+    配套：<a href="../lessons/0015-observability.html">第 15 课</a> ·
+    <a href="../labs/0015-observability/">Lab 15</a> ·
+    <a href="glossary.html#term-observability">observability</a> ·
+    <a href="glossary.html#term-trace">trace</a> ·
+    <a href="glossary.html#term-span">span</a>
+  </p>
+
+  <nav class="footer-nav">
+    <a href="trajectory-ci-checklist.html">← 轨迹与回归门禁清单</a>
+    <a href="course-roadmap.html">课程路线图</a>
+    <a class="next" href="../lessons/0015-observability.html">第 15 课：可观测性与成本 →</a>
+  </nav>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

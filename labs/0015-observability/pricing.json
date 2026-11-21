@@ -1,0 +1,23 @@
+{
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "note": "示意价格，不是任何供应商报价；用于练习账本结构。",
+  "prices": [
+    {
+      "model": "medic-small",
+      "input_per_million": 0.4,
+      "output_per_million": 1.6,
+      "cache_read_per_million": 0.04,
+      "cache_write_per_million": 0.5,
+      "effective_from": "2026-10-01"
+    },
+    {
+      "model": "medic-large",
+      "input_per_million": 2.5,
+      "output_per_million": 10.0,
+      "cache_read_per_million": 0.25,
+      "cache_write_per_million": 3.125,
+      "effective_from": "2026-10-01"
+    }
+  ]
+}

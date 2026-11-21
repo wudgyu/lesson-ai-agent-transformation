@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-11-20。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-11-21。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -262,6 +262,33 @@
   grader 校验与 reward hacking 防护。第 13 课“先代码后模型”的 API 对照。
 - [LangSmith — How to define an LLM-as-a-judge evaluator](https://docs.langchain.com/langsmith/llm-as-judge)
   feedback schema 即 rubric；Boolean / Categorical / Continuous；人工修正自动成为 few-shot。
+
+### 可观测性、成本与延迟
+
+- [OpenTelemetry — GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai)
+  **第 15 课精读**。agent / inference / tool span 的命名与属性；`gen_ai.usage.input_tokens` / `output_tokens` / `cache_read` / `reasoning` 的“子集”语义；状态为 Development，需 pin 版本。
+- [OpenTelemetry — GenAI token metrics](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-token-metrics.md)
+  **第 15 课精读（账本）**。`gen_ai.client.inference.usage.*` 计数器与 operation 直方图；为什么不要在全部 span 上直接求和；metrics 不受 trace sampling 影响。
+- [OpenTelemetry — GenAI agent spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md)
+  **第 15 课（trace schema）**。`invoke_agent`、`execute_tool`、`create_agent`、`plan` 的 span 名、必需属性与 token 归属。
+- [OpenAI Agents SDK — Tracing](https://openai.github.io/openai-agents-python/tracing/)
+  **第 15 课（实现对照）**。trace / span、task/turn/agent/generation/function/handoff span、`custom_span()`、processors/exporters、`flush_traces()`。
+- [OpenAI Agents SDK — Usage](https://openai.github.io/openai-agents-python/usage/)
+  第 15 课（usage 对照）。`result.context_wrapper.usage` 的 requests / input / output / cached / reasoning token 与 `request_usage_entries`。
+- [LangSmith — Cost tracking](https://docs.langchain.com/langsmith/cost-tracking)
+  **第 15 课（成本模型）**。`usage_metadata` 的 token / cost 字段、价格表、cache / reasoning 分项、价格更新不回溯的 caveat。
+- [Langfuse — Token & cost tracking](https://langfuse.com/docs/observability/features/token-and-cost-tracking)
+  **第 15 课（缺失 usage）**。`usage_details` / `cost_details` 的非重叠桶；2026-11 停止自动 tokenization，缺失 usage 不估算。
+- [OpenAI — Prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching)
+  第 15 课（cache 账本）。cached input 折扣、cache write 溢价、`prompt_tokens_details.cached_tokens` / `prompt_cache_key`。
+- [Dean & Barroso — The Tail at Scale (CACM 2013)](https://research.google/pubs/the-tail-at-scale/)
+  **第 15 课（尾延迟）**。fan-out 放大：1% 叶子慢 × 100 路 → 63.4% 请求慢；hedged requests 与 tail-tolerant 设计。
+- [Google SRE Workbook — Implementing SLOs](https://sre.google/workbook/implementing-slos/)
+  第 15 课（延迟 SLO）。延迟 SLI 写成“低于阈值的请求比例”，不要用平均；多阈值/多百分位观察长尾。
+- [Where the Tokens Go: A Measured Anatomy of LLM Agent Trajectory Costs (REaLM 2026)](https://aclanthology.org/2026.realm-1.24.pdf)
+  第 15 课（长上下文成本）。把轨迹成本拆成固定前缀、回显的助手历史与工具结果历史；同一段历史在后续步骤被反复计费。
+- [Kapoor et al. — AI Agents That Matter (arXiv:2407.01502)](https://arxiv.org/abs/2407.01502)
+  第 15 课（成本口径）。成本受控的 Agent 评测、准确率-成本 Pareto；cost per success 而不是单次调用成本。
 
 ### 评测、可观测与安全
 
