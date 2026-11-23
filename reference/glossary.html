@@ -204,8 +204,8 @@
         <tr id="term-mcp-transport"><td>MCP transport</td><td>stdio（本地子进程，JSON-RPC 走 stdin/stdout）或 Streamable HTTP（远程，POST /mcp）；HTTP+SSE 已弃用。</td><td>W2 D12</td></tr>
         <tr id="term-server-discover"><td>server/discover</td><td>2026-07-28 中 server 必须实现的 RPC：返回支持的协议版本、capabilities 与身份；client 可用它做版本选择或兼容探测。</td><td>W2 D12</td></tr>
         <tr id="term-stateless-protocol"><td>无状态协议<span class="en">stateless protocol</span></td><td>每个请求自带协议版本、客户端信息与能力（<code>_meta</code>），不依赖连接或 session；跨调用状态用显式 handle。</td><td>W2 D12</td></tr>
-        <tr id="term-tool-poisoning"><td>工具投毒<span class="en">tool poisoning</span></td><td>把恶意指令写进工具描述、schema 或结果，诱导模型偏离任务或调用危险工具；缓解是可信 server 注册、投影、审批与描述审计。</td><td>W2 D12</td></tr>
-        <tr id="term-sandbox"><td>沙箱<span class="en">sandbox</span></td><td>限制工具可访问的文件、网络、进程与权限的隔离环境。执行模型生成的代码或命令时必须使用。</td><td>W3 D18</td></tr>
+        <tr id="term-tool-poisoning"><td>工具投毒<span class="en">tool poisoning</span></td><td>把恶意指令写进工具描述、schema 或结果，诱导模型偏离任务或调用危险工具；缓解是可信 server 注册、投影、审批与描述审计。</td><td>W2 D12 · W3 L16</td></tr>
+        <tr id="term-sandbox"><td>沙箱<span class="en">sandbox</span></td><td>限制工具可访问的文件、网络、进程与权限的隔离环境。执行模型生成的代码或命令时必须使用；文件隔离与网络隔离要同时生效。</td><td>W3 L16</td></tr>
       </tbody>
     </table>
   </div>
@@ -243,10 +243,35 @@
         <tr id="term-token-ledger"><td>Token 账本<span class="en">token ledger</span></td><td>把每次 inference 的 usage 按 model 价格、cache 状态、失败/重试与业务维度记账。只从叶子 inference span 取数，避免 agent 汇总重复计费。</td><td>W3 L15</td></tr>
         <tr id="term-cost-per-success"><td>单位成功成本<span class="en">cost per success</span></td><td>总成本除以成功 run 数；分子包含失败调用与重试，分母只放成功任务。回答“做成一件要多少钱”，而不是“跑一次要多少钱”。</td><td>W3 L15</td></tr>
         <tr id="term-critical-path"><td>关键路径<span class="en">critical path</span></td><td>决定端到端时间的依赖链：父 → 子，顺序兄弟按时间连边，并行兄弟不连边。并行工具的总时长相加会高估墙钟。</td><td>W3 L15</td></tr>
-        <tr id="term-guardrail"><td>护栏<span class="en">guardrail</span></td><td>在输入、输出或工具调用前后执行的校验与限制，用于拦截不安全内容、越权操作与格式错误。</td><td>W2/W3</td></tr>
-        <tr id="term-least-privilege"><td>最小权限<span class="en">least privilege</span></td><td>只给 Agent 完成任务所需的最小工具与数据权限。写操作应默认拒绝，审批后放行。</td><td>W1 L4</td></tr>
-        <tr id="term-prompt-injection"><td>提示词注入<span class="en">prompt injection</span></td><td>攻击者把恶意指令藏在网页、文档、工具返回中，诱导 Agent 偏离原任务或泄露信息。Agent 安全的核心威胁。</td><td>W1 L2 · W3 D18</td></tr>
+        <tr id="term-guardrail"><td>护栏<span class="en">guardrail</span></td><td>在输入、输出或工具调用前后执行的校验与限制，用于拦截不安全内容、越权操作与格式错误。它是检测层，不是授权边界。</td><td>W2/W3 · W3 L16</td></tr>
+        <tr id="term-least-privilege"><td>最小权限<span class="en">least privilege</span></td><td>只给 Agent 完成任务所需的最小工具与数据权限。写操作应默认拒绝，审批后放行。</td><td>W1 L4 · W3 L16</td></tr>
+        <tr id="term-prompt-injection"><td>提示词注入<span class="en">prompt injection</span></td><td>攻击者把恶意指令藏在用户输入、网页、文档或工具返回中，诱导 Agent 偏离原任务或泄露信息。分直接注入与间接注入；Agent 安全的核心威胁。</td><td>W1 L2 · W3 L16</td></tr>
         <tr id="term-token-budget"><td>Token 预算<span class="en">token budget</span></td><td>为单次任务设定的 token/成本上限。Agent 循环会放大成本，必须在设计时就设预算与降级策略。</td><td>W1 L1 · W3 D17</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="glossary-group">
+    <h2 id="security"><span class="num">F</span>安全与权限</h2>
+    <table>
+      <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
+      <tbody>
+        <tr id="term-indirect-prompt-injection"><td>间接提示词注入<span class="en">indirect prompt injection</span></td><td>恶意指令不在用户输入里，而藏在 Agent 读取的网页、issue、日志、文档或工具结果中，诱导 Agent 把数据当指令执行。与直接注入相对。</td><td>W3 L16</td></tr>
+        <tr id="term-lethal-trifecta"><td>致命三要素<span class="en">lethal trifecta</span></td><td>同时具备私有数据访问、不可信内容暴露、对外通信能力的 Agent；三者齐备时，注入可以把数据带出去。缓解是拆掉至少一条腿。</td><td>W3 L16</td></tr>
+        <tr id="term-rule-of-two"><td>二选三规则<span class="en">Agents Rule of Two</span></td><td>Meta 提出的设计启发式：单个 session 最多同时具备 A 处理不可信输入、B 访问敏感系统、C 改变状态或对外通信中的两项；三项都需要时，必须有人类监督或可靠验证。</td><td>W3 L16</td></tr>
+        <tr id="term-capability"><td>能力<span class="en">capability</span></td><td>由可信任务/操作者授予的、对某个具体动作的权限，例如 fs:read:/repo、repo:write:feature/*。模型输出只能提议动作，不能自行扩大能力。</td><td>W3 L16</td></tr>
+        <tr id="term-provenance"><td>来源<span class="en">provenance</span></td><td>一个值从哪段上下文、哪个工具结果、哪个用户请求来。安全策略依据来源的信任等级决定它能否流向某个 sink。</td><td>W3 L16</td></tr>
+        <tr id="term-taint"><td>污点<span class="en">taint</span></td><td>标记“这个值受不可信内容影响”。污点值流向 egress / exec 应拒绝，流向写操作应审批；这是信息流控制（IFC）的简化形式。</td><td>W3 L16</td></tr>
+        <tr id="term-information-flow-control"><td>信息流控制<span class="en">information-flow control</span></td><td>用标签和策略约束数据在系统内的流动，而不只检查单个字符串。CaMeL 用控制流/数据流分离 + capability 实现可证明的注入抵抗。</td><td>W3 L16</td></tr>
+        <tr id="term-complete-mediation"><td>完全中介<span class="en">complete mediation</span></td><td>每一次访问、每一个工具调用都在边界上重新检查授权，不能依赖模型“记住”规则。授权必须在 downstream 系统执行。</td><td>W3 L16</td></tr>
+        <tr id="term-reference-monitor"><td>参考监视器<span class="en">reference monitor</span></td><td>在主体与客体之间强制执行访问控制的抽象机制：不可绕过、可验证、可审计。本课 gateway 的 policy 就是简化版。</td><td>W3 L16</td></tr>
+        <tr id="term-egress-control"><td>出口控制<span class="en">egress control</span></td><td>限制 Agent 能连接的目标：域名 allowlist、HTTPS、端口、IP 段、重定向复查、DNS 与图片 URL。只限制输入不限制出口，等于没防外泄。</td><td>W3 L16</td></tr>
+        <tr id="term-confused-deputy"><td>混淆代理<span class="en">confused deputy</span></td><td>Agent 用自己的高权限替低权限用户执行动作。防线是按用户身份与任务范围授权，而不是只信任 Agent 进程的权限。</td><td>W3 L16</td></tr>
+        <tr id="term-least-agency"><td>最小代理<span class="en">least agency</span></td><td>OWASP Agentic 2026 的原则：只给完成任务所需的最小自主性、工具与权限；高风险动作需要人类批准或结构化验证。</td><td>W3 L16</td></tr>
+        <tr id="term-adaptive-attack"><td>自适应攻击<span class="en">adaptive attack</span></td><td>攻击者针对具体防线迭代调整策略。研究表明多数静态防御在自适应攻击下 ASR 超过 90%，因此安全评测必须包含自适应红队。</td><td>W3 L16</td></tr>
+        <tr id="term-attack-success-rate"><td>攻击成功率<span class="en">attack success rate (ASR)</span></td><td>攻击样本中造成实际危害的比例。必须与 utility、误杀率、审批摩擦一起报，单独的 ASR 可以被“全部拒绝”刷低。</td><td>W3 L16</td></tr>
+        <tr id="term-utility-retention"><td>效用保留<span class="en">utility retention</span></td><td>加固后正常任务仍能完成的比例。安全门禁应同时约束 ASR 与 utility，避免把 Agent 变成只会拒绝的盒子。</td><td>W3 L16</td></tr>
+        <tr id="term-secret-redaction"><td>秘密脱敏<span class="en">secret redaction</span></td><td>在工具输出进入模型上下文、日志或审计之前替换密钥、token、私钥等敏感值。脱敏是防线，不是加密，也不替代出口控制。</td><td>W3 L16</td></tr>
       </tbody>
     </table>
   </div>
@@ -261,8 +286,10 @@
     <a href="../lessons/0013-eval-datasets-judge.html">第 13 课：评测 I</a>
     <a href="../lessons/0014-trajectory-passk-ci.html">第 14 课：评测 II</a>
     <a href="../lessons/0015-observability.html">第 15 课：可观测性与成本</a>
+    <a href="../lessons/0016-security-permissions.html">第 16 课：安全与权限</a>
     <a href="eval-checklist.html">评测设计清单</a>
-    <a class="next" href="observability-checklist.html">可观测性与成本清单 →</a>
+    <a href="observability-checklist.html">可观测性与成本清单</a>
+    <a class="next" href="security-checklist.html">安全与权限清单 →</a>
   </nav>
 
 </main>

@@ -1,6 +1,6 @@
 # AI Agent 开发 Resources
 
-> 最后核验：2026-11-21。优先一手资料；中文材料仅作术语对照与补充。
+> 最后核验：2026-11-23。优先一手资料；中文材料仅作术语对照与补充。
 > 使用方式：每节课会指定「本课精读」；其余条目按需查阅，不必通读。
 
 ## Knowledge
@@ -289,6 +289,33 @@
   第 15 课（长上下文成本）。把轨迹成本拆成固定前缀、回显的助手历史与工具结果历史；同一段历史在后续步骤被反复计费。
 - [Kapoor et al. — AI Agents That Matter (arXiv:2407.01502)](https://arxiv.org/abs/2407.01502)
   第 15 课（成本口径）。成本受控的 Agent 评测、准确率-成本 Pareto；cost per success 而不是单次调用成本。
+
+### 安全与权限
+
+- [OWASP — LLM01:2025 Prompt Injection](https://genai.owasp.org/llmrisk/llm01-prompt-injection/)
+  **第 16 课精读（前半）**。直接 vs 间接注入；为什么 OWASP 认为目前仍不清楚是否存在 fool-proof 的预防方法；输入/输出过滤、最小权限、人工审批、标记不可信内容等缓解。
+- [OWASP — LLM06:2025 Excessive Agency](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/)
+  **第 16 课精读（后半）**。过度代理的三个根因（excessive functionality / permissions / autonomy）；“authorization in downstream systems rather than relying on an LLM”的工程含义。
+- [OWASP — Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
+  第 16 课（agentic 风险框架）。ASI01 Goal Hijack、ASI02 Tool Misuse、ASI03 Identity & Privilege Abuse、ASI05 Unexpected Code Execution；least agency 与“把所有自然语言输入视为不可信”。
+- [Simon Willison — The lethal trifecta for AI agents](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/)
+  **第 16 课（威胁模型）**。私有数据 + 不可信内容 + 对外通信；为什么 95% 拦截率在应用安全里是不及格；拆掉一条腿。
+- [Meta — Agents Rule of Two](https://ai.meta.com/blog/practical-ai-agent-security/)
+  **第 16 课（设计启发式）**。单个 session 最多同时具备 A/B/C 中的两项；三项齐备时需要人类监督、可靠验证或干净 session。
+- [Debenedetti et al. — CaMeL: Defeating Prompt Injections by Design (arXiv:2503.18813)](https://arxiv.org/abs/2503.18813)
+  **第 16 课（能力 + 数据流）**。可信查询决定控制流，不可信数据被跟踪数据流，capability 策略在工具调用处执行；AgentDojo 77% vs 84%。
+- [Beurer-Kellner et al. — Design Patterns for Securing LLM Agents against Prompt Injections (arXiv:2506.08837)](https://arxiv.org/abs/2506.08837)
+  **第 16 课（架构模式）**。Action-Selector、Plan-Then-Execute、LLM Map-Reduce、Dual LLM、Code-Then-Execute、Context-Minimization；utility/security 取舍。
+- [Nasr et al. — The Attacker Moves Second (arXiv:2510.09023)](https://arxiv.org/abs/2510.09023)
+  **第 16 课（评测方法）**。12 种防御在自适应攻击下多数 ASR > 90%；静态、单轮测试不足以证明防御有效。
+- [OpenAI Agents SDK — Guardrails](https://openai.github.io/openai-agents-python/guardrails/)
+  **第 16 课（实现边界）**。input / output / tool guardrail 的覆盖范围；`run_in_parallel` 的副作用取舍；handoff/hosted tools 不在 tool guardrail 管线里。
+- [Anthropic — Claude Code sandboxing](https://www.anthropic.com/research/claude-code-sandboxing)
+  **第 16 课（沙箱）**。bubblewrap / seatbelt、文件系统与网络隔离、Unix socket 代理、权限提示减少 84%；“effective sandboxing requires both filesystem and network isolation”。
+- [Anthropic — How we contain Claude across products](https://www.anthropic.com/research/how-we-contain-claude)
+  第 16 课选读。gVisor / microVM / OS sandbox 的产品级 containment；隔离原语与自定义 glue code 的失败案例。
+- [Simon Willison — New prompt injection papers: Agents Rule of Two and The Attacker Moves Second](https://simonwillison.net/2025/Nov/2/new-prompt-injection-papers/)
+  第 16 课（两份论文的对照摘要）；适合先读一遍再决定精读哪一篇。
 
 ### 评测、可观测与安全
 
