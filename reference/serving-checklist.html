@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>服务化、流式与可靠性清单 · AI Agent 转型课</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  .check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+    margin: 1.2rem 0 1.8rem;
+  }
+  .check-card {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);
+    border-radius: 0 0 4px 4px;
+    padding: 0.85rem 1rem 0.6rem;
+    background: color-mix(in srgb, var(--rule) 10%, transparent);
+    font-family: var(--sans);
+    font-size: 0.84rem;
+    line-height: 1.55;
+    break-inside: avoid;
+  }
+  .check-card h4 {
+    margin: 0 0 0.45rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .check-card ul { margin: 0; padding-left: 1.1rem; }
+  .check-card li { margin: 0.22rem 0; }
+  @media (max-width: 700px) { .check-grid { grid-template-columns: 1fr; } }
+
+  .flow {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.65;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.9rem 1rem;
+    background: color-mix(in srgb, var(--rule) 8%, transparent);
+    overflow-x: auto;
+    white-space: pre;
+    margin: 1.2rem 0 1.5rem;
+  }
+
+  .contract-table td:first-child { font-family: var(--mono); white-space: nowrap; font-size: 0.78rem; }
+  .contract-table td:nth-child(2) { font-family: var(--mono); white-space: nowrap; }
+  .contract-table td { font-size: 0.82rem; }
+  .edge-table td:first-child { font-weight: 650; white-space: nowrap; }
+  .edge-table td { font-size: 0.82rem; }
+  .edge-table .bad { color: var(--accent); font-weight: 650; }
+  .edge-table .good { color: var(--win); font-weight: 650; }
+
+  .snippet {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.6;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 1rem 0 1.3rem;
+  }
+
+  .formula small { display: block; font-family: var(--sans); font-size: 0.72rem; color: var(--muted); margin-top: 0.45rem; letter-spacing: 0; }
+</style>
+</head>
+<body>
+<div class="progress-bar" aria-hidden="true"></div>
+
+<main class="lesson">
+
+  <div class="course-kicker">AI Agent 转型课 · 参考</div>
+  <h1>服务化、流式与可靠性清单</h1>
+  <p class="subtitle">请求会断，进程会死；run 必须活得比它们久。</p>
+  <div class="meta">
+    <span>首次建立 2026-11-27</span>
+    <span>配套 Lesson 0017</span>
+    <span>可打印</span>
+  </div>
+
+  <p class="lede">
+    这张清单把“把 Agent 部署成服务”拆成六件事：run 的生命周期、入口准入、
+    超时与取消、重试预算、SSE 流式、关停与恢复。先记住三句话，再逐项检查。
+    配套 lab：<code>labs/0017-serving</code>；课时页：
+    <a href="../lessons/0017-serving.html">Lesson 0017</a>。
+  </p>
+
+  <h2 id="model"><span class="num">01</span>三句话心智模型</h2>
+
+  <div class="formula">
+    <strong>请求 ≠ run</strong> · <strong>流是视图，结果才是真相</strong> · <strong>重试要花预算</strong>
+  </div>
+
+  <ol>
+    <li><strong>HTTP 请求是短命的，run 是长命的。</strong>入口返回 202 + run id；执行、事件、结果、checkpoint 都挂在 run 上。客户端断开不等于任务取消。</li>
+    <li><strong>SSE 只是通知通道。</strong>事件可能丢、可能被环形缓冲区淘汰、可能 overflow；最终结果必须能从 <code>GET /runs/{id}</code> 取回，并且先写结果再发 <code>done</code>。</li>
+    <li><strong>重试、限流、排队保护的都是共享资源。</strong>重试花的是下游容量；并发限制保护的是 worker、内存和模型配额；队列必须有界，满了就 503，而不是无限堆积。</li>
+  </ol>
+
+  <div class="callout warn">
+    <span class="label">最容易犯的错</span>
+    <p>
+      用 <code>BackgroundTasks</code> 跑 Agent。它和 web 进程同生共死、没有持久队列、
+      没有重试、没有可见性；进程收到 SIGTERM 就一起没了。FastAPI 官方文档明确把它定位为
+      “响应之后的小任务”，重活要用外部 job queue。
+    </p>
+  </div>
+
+  <h2 id="run"><span class="num">02</span>Run 的解剖</h2>
+
+  <div class="flow">POST /v1/runs
+  │
+  ├─ 认证：tenant / subject / scopes          ← 不能信 X-Tenant 头
+  ├─ 幂等：Idempotency-Key + payload hash
+  ├─ 配额：tenant token bucket                → 429 + Retry-After
+  ├─ 容量：bounded queue + worker slots       → 503 queue_full
+  └─ 202 {run_id, events_url}
+        │
+        ▼
+  queued ──worker──> running ──成功──> succeeded
+     │                  │
+     │                  ├─ deadline / non-retryable ──> failed
+     │                  ├─ caller cancel ─────────────> cancelled
+     │                  └─ shutdown ──────────────────> queued (resumable)
+     └─ caller cancel ────────────────────────────────> cancelled
+
+  每个 run 持有：
+    run_id · tenant · status · created_at · started_at · finished_at
+    event log (seq, type, data, ts) · last_seq
+    checkpoint (phase_index, findings) · result / error
+    attempts · resumable · cancel_requested</div>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>状态机必须写死</h4>
+      <ul>
+        <li>terminal 只有三种：succeeded / failed / cancelled。</li>
+        <li>terminal 之后不再接受 cancel、不再改结果。</li>
+        <li><code>done</code> 事件永远是最后一个事件。</li>
+        <li>结果先落 store，再发 <code>done</code>。</li>
+        <li>queued 的 run 在重启后必须能被重新拾起。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>Run 记录必须包含</h4>
+      <ul>
+        <li>租户与调用者身份（审计用）。</li>
+        <li>输入 payload 的 fingerprint。</li>
+        <li>当前 phase / checkpoint，而不是只存“running”。</li>
+        <li>attempts 与最后一次错误类型。</li>
+        <li>结果版本与生成时间（客户端可能拿到旧结果）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="contract"><span class="num">03</span>HTTP 契约速查</h2>
+
+  <table class="contract-table">
+    <thead><tr><th>端点</th><th>状态码</th><th>语义</th></tr></thead>
+    <tbody>
+      <tr><td>POST /v1/runs</td><td>202</td><td>接受新 run；返回 run_id、Location、events URL。</td></tr>
+      <tr><td>POST /v1/runs</td><td>200</td><td>同 key 同 payload，run 已完成；返回原 run，不新建。</td></tr>
+      <tr><td>POST /v1/runs</td><td>400</td><td>缺 Idempotency-Key。</td></tr>
+      <tr><td>POST /v1/runs</td><td>409</td><td>同 key 的 run 仍在进行中；返回 Location 让客户端 attach。</td></tr>
+      <tr><td>POST /v1/runs</td><td>422</td><td>同 key 但 payload 不同；不要返回原结果。</td></tr>
+      <tr><td>POST /v1/runs</td><td>429</td><td>租户配额用完；带 <code>Retry-After</code>。</td></tr>
+      <tr><td>POST /v1/runs</td><td>503</td><td>队列满或正在关停；带 <code>Retry-After</code> 可选。</td></tr>
+      <tr><td>GET /v1/runs/{id}</td><td>200 / 404</td><td>结果与状态的唯一真相。</td></tr>
+      <tr><td>GET /v1/runs/{id}/events</td><td>200</td><td>SSE；支持 <code>Last-Event-ID</code>。</td></tr>
+      <tr><td>POST /v1/runs/{id}/cancel</td><td>202 / 404</td><td>协作式取消；返回最终或 cancelling 状态。</td></tr>
+      <tr><td>GET /healthz</td><td>200</td><td>liveness：进程还活着。</td></tr>
+      <tr><td>GET /readyz</td><td>200 / 503</td><td>readiness：能接新流量吗？关停一开始就 503。</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <span class="label">202 的含义</span>
+    <p>
+      “我已接收，但还没完成。”客户端应保存 run id，通过 SSE 或轮询获取进度；
+      不要在一次 HTTP 请求里等完整 Agent 跑完。长连接 + 无进度 = 最容易被网关超时切断的形态。
+    </p>
+  </div>
+
+  <h2 id="admission"><span class="num">04</span>入口准入清单</h2>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>身份与授权</h4>
+      <ul>
+        <li>tenant 来自认证主体，不来自客户端 header。</li>
+        <li>每个 run 记录 subject 与 scopes，供审计。</li>
+        <li>工具权限按 run 的任务能力投影，不按全局角色。</li>
+        <li>写操作与高风险工具仍走审批，不因“服务化”绕过。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>配额与限流</h4>
+      <ul>
+        <li>tenant token bucket：capacity 允许突发，refill 控制均值。</li>
+        <li>429 必须带 <code>Retry-After</code>（RFC 6585）。</li>
+        <li>限流键至少是 tenant；需要时可加 endpoint / model。</li>
+        <li>正常重试不重复扣配额：先查幂等，再扣 token。</li>
+        <li>限流器故障默认 fail open，但要有 kill switch 与指标。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>并发与排队</h4>
+      <ul>
+        <li>并发限制保护 worker、连接池、内存和模型配额。</li>
+        <li>队列必须有界；满了返回 503，不无限堆积。</li>
+        <li>queue full 时退还刚扣的配额 token。</li>
+        <li>区分 429（租户问题）与 503（系统问题）。</li>
+        <li>critical 流量可预留容量；普通流量先被 shed。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>自适应与降级</h4>
+      <ul>
+        <li>过载时按 <code>max(0, (requests − K×accepts)/(requests+1))</code> 本地拒绝。</li>
+        <li>K 通常取 2；K &lt; 1 会把健康后端也 shed 掉。</li>
+        <li>拒绝只针对非关键任务；关键任务保留通道。</li>
+        <li>恢复要慢，避免在过载与空闲之间抖动。</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="small">
+    依据：Stripe 的 request rate limiter / concurrent requests limiter / load shedder；
+    Google SRE 的 client-side adaptive throttling；RFC 6585 的 429 与 Retry-After。
+  </p>
+
+  <h2 id="timeouts"><span class="num">05</span>超时、取消与重试</h2>
+
+  <div class="formula">
+    <strong>deadline</strong> = 客户端总预算 · <strong>step timeout</strong> = remaining budget
+    <small>每一层只拿剩余预算，不要每层重新起算。</small>
+  </div>
+
+  <div class="flow">client deadline 30s
+  └─ server run deadline 25s
+       └─ step deadline 10s
+            └─ tool timeout 8s
+                 └─ retry delay 从 remaining 里扣
+
+full jitter:  delay = uniform(0, min(max_delay, base × 2^retry_index))
+retry 放大:   3 attempts × 5 layers = 3^5 = 243 次下游调用</div>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>超时</h4>
+      <ul>
+        <li>每个远程调用都必须有 deadline，覆盖 DNS/TLS/连接/读取。</li>
+        <li>超时值来自下游延迟分布，不是拍脑袋。</li>
+        <li>超时要能取消底层工作，不能只是客户端放弃等待。</li>
+        <li>运行级 deadline 触发后标记 failed + partial evidence。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>取消</h4>
+      <ul>
+        <li>任务只在 <code>await</code> 点能被取消；每步要有 yield point。</li>
+        <li>phase 边界检查 <code>should_stop()</code>，不要在副作用中间取消。</li>
+        <li>取消是协作式的；HTTP 断开不应自动取消昂贵 run。</li>
+        <li>取消后仍要写 terminal 状态与 <code>done</code> 事件。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>重试</h4>
+      <ul>
+        <li>只重试 timeout / 429 / 503 / 连接重置。</li>
+        <li>不重试 400 / 401 / 403 / 404 / 422 / 策略拒绝。</li>
+        <li>指数退避 + full jitter；设置最大尝试次数与最大延迟。</li>
+        <li>只让一层拥有重试权；多层重试会指数放大。</li>
+        <li>重试从 token bucket 预算扣；成功可回补。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>幂等</h4>
+      <ul>
+        <li>POST 创建 run 必须带 <code>Idempotency-Key</code>。</li>
+        <li>key 绑定 payload fingerprint；不同 payload → 422。</li>
+        <li>进行中重复 → 409 + Location；已完成 → 原结果。</li>
+        <li>key TTL 要覆盖客户端最长重试窗口。</li>
+        <li>副作用账本按 <code>(run_id, phase)</code> 去重，不靠“应该不会重跑”。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 id="sse"><span class="num">06</span>SSE 线格式与恢复</h2>
+
+  <div class="snippet">Content-Type: text/event-stream
+Cache-Control: no-cache
+X-Accel-Buffering: no
+
+retry: 2000
+
+id: 7
+event: phase_started
+data: {"phase":"retrieve_logs","index":1}
+
+: ping
+
+id: 8
+event: done
+data: {"status":"succeeded"}
+
+</div>
+
+  <div class="check-grid">
+    <div class="check-card">
+      <h4>线格式</h4>
+      <ul>
+        <li>UTF-8 文本；事件之间用空行分隔。</li>
+        <li><code>data:</code> 多行会拼接；JSON 保持单行最简单。</li>
+        <li><code>id:</code> 单调递增；浏览器重连时回传 <code>Last-Event-ID</code>。</li>
+        <li><code>retry:</code> 毫秒整数，设置重连等待。</li>
+        <li><code>:</code> 开头是注释，可用作 keep-alive ping。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>恢复语义</h4>
+      <ul>
+        <li>事件日志是环形缓冲区；必须处理“请求的 id 已被淘汰”。</li>
+        <li>gap 时先发 <code>snapshot</code>（状态 + 结果 + last id），再发保留事件。</li>
+        <li>snapshot 的 id 设为第一个保留事件之前，保证单调。</li>
+        <li>terminal run 重放完直接关闭，不发多余 ping。</li>
+        <li>客户端收到 <code>done</code> 后仍 GET 一次结果。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>背压</h4>
+      <ul>
+        <li>SSE 没有应用层流控；不能给慢消费者无限缓冲。</li>
+        <li>每个订阅者有有界队列；满了丢弃最旧事件并断开。</li>
+        <li>overflow 事件携带“最后真正送达的 id”，不是 run 的 last id。</li>
+        <li>让客户端用 Last-Event-ID 重连补齐，而不是服务端阻塞。</li>
+      </ul>
+    </div>
+    <div class="check-card">
+      <h4>代理与部署</h4>
+      <ul>
+        <li>Nginx 要关 buffering：<code>X-Accel-Buffering: no</code>。</li>
+        <li>FastAPI 0.135+ 的 <code>EventSourceResponse</code> 自动设头并每 15s ping。</li>
+        <li>HTTP/1.1 每浏览器每域约 6 条连接；HTTP/2 多路复用。</li>
+        <li>多 worker 时事件日志与订阅广播必须外置。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="label">错误发生在 200 之后</span>
+    <p>
+      SSE 一旦开始发送，HTTP 状态码已经锁定为 200。运行中失败必须发
+      <code>event: error</code>，再发 <code>event: done</code>；客户端要同时处理
+      “流内错误”和“连接断开”两种失败，不能只检查 HTTP 状态。
+    </p>
+  </div>
+
+  <h2 id="shutdown"><span class="num">07</span>关停与恢复顺序</h2>
+
+  <div class="flow">1. 收到 SIGTERM / 删除事件
+2. readiness → false（负载均衡器停止导流）
+3. 拒绝新 run：503 draining
+4. 在 grace period 内等待在飞 run 完成
+5. 超时：取消 worker，在最后完成的 phase 写 checkpoint
+   · 先写 effect，再写 checkpoint
+   · effect ledger 按 (run_id, phase) 去重
+6. 进程退出（SIGKILL 之前）
+7. 新进程启动：
+   · 扫描 status=queued 的 run
+   · 从 checkpoint.phase_index 继续
+   · 已产生的 effect 跳过，不重复发评论/开 PR</div>
+
+  <table class="edge-table">
+    <thead><tr><th>边界</th><th>错误做法</th><th>正确做法</th></tr></thead>
+    <tbody>
+      <tr><td>readiness</td><td>关停时仍返回 200</td><td>立即 503；liveness 保持 200 直到退出</td></tr>
+      <tr><td>新请求</td><td>继续接受，最后被 SIGKILL</td><td>draining 阶段直接 503</td></tr>
+      <tr><td>在飞 run</td><td>等所有 run 跑完（可能几小时）</td><td>等 grace period，超时 checkpoint</td></tr>
+      <tr><td>副作用</td><td>checkpoint 先写、effect 后写</td><td>effect 先落盘，ledger 去重，再 checkpoint</td></tr>
+      <tr><td>重启</td><td>把所有 running 当 failed</td><td>queued + resumable，从 phase_index 继续</td></tr>
+      <tr><td>多 worker</td><td>用进程内 dict 存 run / 事件</td><td>外置 store + pub/sub；或单 worker + 外部队列</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="metrics"><span class="num">08</span>必须有的指标</h2>
+
+  <table>
+    <thead><tr><th>类别</th><th>指标</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td>流量</td><td>submitted / accepted / duplicate / 4xx / 429 / 503</td><td>区分客户端错误、配额拒绝与容量拒绝</td></tr>
+      <tr><td>并发</td><td>inflight / max_inflight / queue_depth / queue_wait_p95</td><td>判断是 worker 不足还是流量突增</td></tr>
+      <tr><td>执行</td><td>succeeded / failed / cancelled / deadline_exceeded</td><td>run 级成功率，不只看 HTTP 200</td></tr>
+      <tr><td>重试</td><td>retries / retry_budget_exhausted / retry_tokens</td><td>发现重试风暴与预算耗尽</td></tr>
+      <tr><td>流式</td><td>active_subscribers / slow_consumers / replay_gap</td><td>发现慢客户端与事件保留不足</td></tr>
+      <tr><td>关停</td><td>drain_timeout / checkpointed / resumed</td><td>验证发布是否真的无损</td></tr>
+      <tr><td>成本</td><td>cost_per_success / tokens_per_run</td><td>把服务成本与业务结果对齐</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <span class="label">告警优先级</span>
+    <p>
+      readiness 失败、queue_depth 持续打满、drain_timeout &gt; 0、effect 重复执行：
+      这四条直接阻断发布。429 比例、retry 比例、slow_consumers 先 WARN，观察趋势。
+      不要用平均延迟告警；用“低于阈值的请求比例”，并单看审批等待。
+    </p>
+  </div>
+
+  <h2 id="fastapi"><span class="num">09</span>FastAPI 速查</h2>
+
+  <div class="snippet"># 1. lifespan：启动/关停只发生一次
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    service = RunService(...)
+    await service.start()
+    app.state.service = service
+    try:
+        yield
+    finally:
+        await service.drain(timeout=25)
+
+app = FastAPI(lifespan=lifespan)
+
+# 2. 202 + Location，不在请求里等 Agent
+@app.post("/v1/runs", status_code=202)
+async def create_run(...):
+    admission = await service.submit(request)
+    return JSONResponse(status_code=202, content={...},
+                        headers={"Location": ...})
+
+# 3. SSE：FastAPI 0.135+
+from fastapi.sse import EventSourceResponse, ServerSentEvent
+
+@app.get("/v1/runs/{run_id}/events")
+async def events(run_id: str):
+    return EventSourceResponse(stream(run_id))
+
+# 4. 手写 SSE 时必须设的头
+return StreamingResponse(gen(), media_type="text/event-stream",
+    headers={"Cache-Control": "no-cache",
+             "X-Accel-Buffering": "no"})
+
+# 5. 同步阻塞库放在 def 路由里，让 FastAPI 丢线程池；
+#    不要放在 async def 里阻塞事件循环。
+@app.get("/blocking")
+def blocking_route():
+    return blocking_db_call()
+</div>
+
+  <h2 id="sources"><span class="num">10</span>一手来源</h2>
+
+  <ul>
+    <li><a href="https://fastapi.tiangolo.com/async/">FastAPI — Concurrency and async / await</a>：<code>def</code> 走线程池、<code>async def</code> 直接 await；阻塞调用不要放进事件循环。</li>
+    <li><a href="https://fastapi.tiangolo.com/tutorial/server-sent-events/">FastAPI — Server-Sent Events</a>：<code>EventSourceResponse</code> / <code>ServerSentEvent</code>、自动 keep-alive、<code>Last-Event-ID</code>。</li>
+    <li><a href="https://html.spec.whatwg.org/multipage/server-sent-events.html">WHATWG HTML — Server-sent events</a>：last event ID、重连、<code>Last-Event-ID</code>、UTF-8 与解析规则。</li>
+    <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events">MDN — Using server-sent events</a>：单向、事件格式、HTTP/1.1 连接上限。</li>
+    <li><a href="https://docs.python.org/3/library/asyncio-task.html">Python asyncio — Task cancellation</a>：任务只在 <code>await</code> 点响应取消；清理要 shield 关键步骤。</li>
+    <li><a href="https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/">AWS Builders' Library — Timeouts, retries, and backoff with jitter</a>：timeout 取 p99.9、retry 是自私的、full jitter、retry token bucket、5 层 × 3 次 = 243。</li>
+    <li><a href="https://sre.google/sre-book/handling-overload/">Google SRE Book — Handling Overload</a>：client-side adaptive throttling 公式与 K 的取值。</li>
+    <li><a href="https://stripe.com/blog/rate-limiters">Stripe — Scaling your API with rate limiters</a>：request rate limiter、concurrent requests limiter、load shedder。</li>
+    <li><a href="https://www.rfc-editor.org/rfc/rfc6585">RFC 6585 §4 — 429 Too Many Requests</a>：429 语义与 <code>Retry-After</code>。</li>
+    <li><a href="https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/">IETF — Idempotency-Key HTTP Header Field</a>：key 唯一性、fingerprint、409 / 422 语义（Active Internet-Draft）。</li>
+    <li><a href="https://fastapi.tiangolo.com/tutorial/background-tasks/">FastAPI — Background Tasks</a>：同进程、小任务；重活要用外部 job queue。</li>
+    <li><a href="https://kubernetes.io/docs/concepts/workloads/pods/pod-termination/">Kubernetes — Pod termination</a>：SIGTERM、<code>terminationGracePeriodSeconds</code>、preStop、endpoint 摘除与 SIGKILL。</li>
+    <li><a href="https://uvicorn.dev/deployment/">Uvicorn — Deployment</a>：workers、spawn、代理头 <code>--forwarded-allow-ips</code>、滚动重启。</li>
+    <li><a href="https://uvicorn.dev/settings/">Uvicorn — Settings</a>：<code>--timeout-graceful-shutdown</code>、<code>--limit-concurrency</code>、<code>--proxy-headers</code>。</li>
+  </ul>
+
+  <div class="source-card">
+    <div class="label">本课精读</div>
+    <h3>FastAPI — Server-Sent Events</h3>
+    <p>
+      先读官方 SSE 教程，确认 <code>EventSourceResponse</code> 的用法、自动 keep-alive
+      与 <code>Last-Event-ID</code>；再读 AWS 的 timeouts/retries 文章，把 full jitter
+      和 retry budget 的直觉建立起来。两份材料分别对应本课的“流式”和“失败”两条主线。
+    </p>
+  </div>
+
+  <hr>
+  <p class="small">
+    回到 <a href="../lessons/0017-serving.html">Lesson 0017</a> ·
+    实验 <code>labs/0017-serving</code> ·
+    术语见 <a href="glossary.html">术语表</a>。
+  </p>
+
+</main>
+
+<script src="../assets/course.js"></script>
+</body>
+</html>

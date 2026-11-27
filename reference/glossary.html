@@ -276,6 +276,33 @@
     </table>
   </div>
 
+  <div class="glossary-group">
+    <h2 id="serving"><span class="num">G</span>服务化与可靠性</h2>
+    <table>
+      <thead><tr><th>术语</th><th>定义</th><th>出现</th></tr></thead>
+      <tbody>
+        <tr id="term-run"><td>Run</td><td>一次 Agent 执行的服务端对象，有自己的 id、状态机、事件日志、checkpoint 与最终结果。它比 HTTP 请求活得久，可跨重连甚至跨进程重启。</td><td>W3 L17</td></tr>
+        <tr id="term-event-log"><td>事件日志<span class="en">event log</span></td><td>按单调递增 seq 追加的 run 事件序列，例如 queued / started / phase_started / done。它是 SSE 的数据源，不是最终结果的唯一存储。</td><td>W3 L17</td></tr>
+        <tr id="term-sse"><td>Server-Sent Events<span class="en">SSE</span></td><td>基于 HTTP 的单向文本事件流，媒体类型为 text/event-stream；支持 id、event、data、retry 字段与浏览器自动重连。适合 Agent 进度与 token 流。</td><td>W3 L17</td></tr>
+        <tr id="term-last-event-id"><td>Last-Event-ID</td><td>SSE 重连时浏览器自动携带的请求头，值为最后收到的事件 id。服务端据此只发送该 id 之后的事件；若 id 已被淘汰，应先发 snapshot。</td><td>W3 L17</td></tr>
+        <tr id="term-snapshot"><td>快照<span class="en">snapshot</span></td><td>事件日志发生 replay gap 时发送的压缩状态，包含当前 status、结果、最后事件 id。它让客户端不必补齐已淘汰的历史事件。</td><td>W3 L17</td></tr>
+        <tr id="term-backpressure"><td>背压<span class="en">backpressure</span></td><td>下游消费不过来时，系统限制上游生产速度的机制。SSE 没有应用层流控，服务端只能用有界订阅者队列，满了丢弃并断开，让客户端按 Last-Event-ID 重连。</td><td>W3 L17</td></tr>
+        <tr id="term-admission-control"><td>准入控制<span class="en">admission control</span></td><td>在创建工作之前决定“接不接”的一组检查：身份、幂等、租户配额、并发与队列容量。拒绝要返回可行动的状态码与 Retry-After。</td><td>W3 L17</td></tr>
+        <tr id="term-token-bucket"><td>令牌桶<span class="en">token bucket</span></td><td>以固定速率补充 token、允许最多 capacity 个突发的限流器。Agent 服务通常还用它做重试预算与模型配额。</td><td>W3 L17</td></tr>
+        <tr id="term-concurrency-limit"><td>并发限制<span class="en">concurrency limit</span></td><td>限制同时进行的工作量，而不是每秒请求数。它保护 worker、连接池、内存与模型配额；对长 run 比 QPS 限制更贴近真实资源。</td><td>W3 L17</td></tr>
+        <tr id="term-load-shedding"><td>负载丢弃<span class="en">load shedding</span></td><td>过载时主动拒绝一部分流量，以保住整体可用性与高优先级请求。常见形式是有界队列满返回 503、按关键性分级、客户端自适应拒绝。</td><td>W3 L17</td></tr>
+        <tr id="term-idempotency-key"><td>幂等键<span class="en">Idempotency-Key</span></td><td>客户端为一次逻辑操作生成的唯一值，服务端把 key 与 payload fingerprint 绑定，使 POST 重试不会创建第二个 run。同 key 不同 payload 应返回 422。</td><td>W3 L17</td></tr>
+        <tr id="term-retry-budget"><td>重试预算<span class="en">retry budget</span></td><td>用令牌桶限制重试总量：重试消耗 token、成功回补，桶空即 fail fast。它把“要不要重试”从每个调用者的局部决定变成系统级约束。</td><td>W3 L17</td></tr>
+        <tr id="term-full-jitter"><td>全抖动<span class="en">full jitter</span></td><td>退避延迟取 uniform(0, min(max_delay, base×2^retry))，把同时失败的一批客户端摊开，避免同步重试打满下游。</td><td>W3 L17</td></tr>
+        <tr id="term-deadline"><td>截止时间<span class="en">deadline</span></td><td>一次 run 的绝对结束时间，而不是每层重新计时的 timeout。每一层只拿 remaining 预算，防止嵌套调用把总时长叠成数倍。</td><td>W3 L17</td></tr>
+        <tr id="term-graceful-shutdown"><td>优雅关停<span class="en">graceful shutdown</span></td><td>收到 SIGTERM 后先让 readiness 失败、拒绝新 work、在 grace period 内 drain；超时则取消 worker 并写 checkpoint，而不是等 SIGKILL 丢状态。</td><td>W3 L17</td></tr>
+        <tr id="term-readiness"><td>就绪探针<span class="en">readiness</span></td><td>回答“现在能接新流量吗”。关停一开始就应为 false，让负载均衡器停止导流；它不是 liveness，不应检查下游依赖是否永久健康。</td><td>W3 L17</td></tr>
+        <tr id="term-liveness"><td>存活探针<span class="en">liveness</span></td><td>回答“进程是否还活着”。只有死锁或永久卡死才应失败；在下游故障时把 liveness 打挂会引发无意义的重启风暴。</td><td>W3 L17</td></tr>
+        <tr id="term-effect-ledger"><td>副作用账本<span class="en">effect ledger</span></td><td>记录已经执行过的副作用，键通常是 (run_id, phase)。崩溃后重放时先查账本，避免重复发评论、重复开 PR；配合“先写 effect 再写 checkpoint”实现 exactly-once effect。</td><td>W3 L17</td></tr>
+      </tbody>
+    </table>
+  </div>
+
   <p class="small">
     新增术语的规则：先在一手资料里确认英文定义，再用一句话写中文解释，最后标注首次出现的位置。
     如果一个词有两种常见含义，拆成两条，不要合并。
@@ -287,9 +314,11 @@
     <a href="../lessons/0014-trajectory-passk-ci.html">第 14 课：评测 II</a>
     <a href="../lessons/0015-observability.html">第 15 课：可观测性与成本</a>
     <a href="../lessons/0016-security-permissions.html">第 16 课：安全与权限</a>
+    <a href="../lessons/0017-serving.html">第 17 课：服务化</a>
     <a href="eval-checklist.html">评测设计清单</a>
     <a href="observability-checklist.html">可观测性与成本清单</a>
-    <a class="next" href="security-checklist.html">安全与权限清单 →</a>
+    <a href="security-checklist.html">安全与权限清单</a>
+    <a class="next" href="serving-checklist.html">服务化与可靠性清单 →</a>
   </nav>
 
 </main>

@@ -1,0 +1,6 @@
+# Optional HTTP layer.  The core lab and test_service.py need only the
+# standard library.
+# Use Python 3.11+ here: current FastAPI/Starlette releases require it.
+fastapi>=0.135
+uvicorn>=0.30
+httpx>=0.27

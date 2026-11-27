@@ -317,6 +317,39 @@
 - [Simon Willison — New prompt injection papers: Agents Rule of Two and The Attacker Moves Second](https://simonwillison.net/2025/Nov/2/new-prompt-injection-papers/)
   第 16 课（两份论文的对照摘要）；适合先读一遍再决定精读哪一篇。
 
+### 服务化、流式与可靠性
+
+- [FastAPI — Server-Sent Events](https://fastapi.tiangolo.com/tutorial/server-sent-events/)
+  **第 17 课精读（前半）**。`EventSourceResponse` / `ServerSentEvent`（0.135+）；自动 keep-alive（15s ping）、`Cache-Control: no-cache`、`X-Accel-Buffering: no`；`Last-Event-ID` 恢复与 POST SSE。
+- [AWS Builders' Library — Timeouts, retries, and backoff with jitter](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/)
+  **第 17 课精读（后半）**。timeout 取值与 p99.9；重试是“自私的”；capped exponential backoff + full jitter；retry token bucket；5 层 × 3 次 = 243 倍放大；只让一层重试。
+- [FastAPI — Concurrency and async / await](https://fastapi.tiangolo.com/async/)
+  第 17 课（事件循环）。`def` 路由走线程池、`async def` 直接 await；阻塞 SDK 不要放进 `async def`；CPU-bound 用 process pool。
+- [FastAPI — Background Tasks](https://fastapi.tiangolo.com/tutorial/background-tasks/)
+  第 17 课（反例）。同进程、响应后执行的小任务；不是 job queue，不保证跨重启，重活要用外部队列。
+- [WHATWG HTML — Server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
+  **第 17 课（SSE 规范）**。last event ID、重连、`Last-Event-ID`、UTF-8、事件流解析、204 停止重连。
+- [MDN — Using server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
+  第 17 课（SSE 入门）。单向连接、字段格式、`retry`、注释 keep-alive；HTTP/1.1 每浏览器每域约 6 条连接。
+- [Python asyncio — Task cancellation](https://docs.python.org/3/library/asyncio-task.html)
+  第 17 课（取消语义）。任务只在 `await` 点响应取消；清理阶段用 `shield`；`Task.cancelling()` 与超时。
+- [Google SRE Book — Handling Overload](https://sre.google/sre-book/handling-overload/)
+  第 17 课（自适应限流）。client-side adaptive throttling 公式 `max(0, (requests−K×accepts)/(requests+1))`；K 通常取 2；本地拒绝也计入 requests。
+- [Stripe — Scaling your API with rate limiters](https://stripe.com/blog/rate-limiters)
+  第 17 课（准入控制）。request rate limiter、concurrent requests limiter、fleet usage load shedder、worker utilization load shedder；限流器 fail open 与 kill switch。
+- [RFC 6585 — 429 Too Many Requests](https://www.rfc-editor.org/rfc/rfc6585)
+  第 17 课（HTTP 语义）。429 与 `Retry-After`；429 响应不能被缓存。
+- [IETF — Idempotency-Key HTTP Header Field](https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/)
+  **第 17 课（幂等）**。key 唯一性、payload fingerprint、进行中 409、同 key 不同 payload 422、有效期；注意仍是 Active Internet-Draft，不是 RFC。
+- [Kubernetes — Pod termination](https://kubernetes.io/docs/concepts/workloads/pods/pod-termination/)
+  第 17 课（关停）。SIGTERM、`preStop`、`terminationGracePeriodSeconds`（默认 30s）、endpoint 摘除与 SIGKILL。
+- [Uvicorn — Deployment](https://uvicorn.dev/deployment/)
+  第 17 课（部署）。workers 使用 spawn 而非 pre-fork；`--reload` 与 `--workers` 互斥；代理头只信任 `--forwarded-allow-ips`。
+- [Uvicorn — Settings](https://uvicorn.dev/settings/)
+  第 17 课（开关）。`--timeout-graceful-shutdown`、`--limit-concurrency`（超额直接 503）、`--proxy-headers`。
+- [OpenAI — Streaming API responses](https://developers.openai.com/api/docs/guides/streaming-responses)
+  第 17 课选读。Chat Completions 的 `data:` 分块与 `[DONE]`；Responses 的语义化事件（`response.output_text.delta`、`response.completed`）；部分输出更难审核。
+
 ### 评测、可观测与安全
 
 - [LangSmith — Evaluation](https://docs.langchain.com/langsmith/evaluation)
